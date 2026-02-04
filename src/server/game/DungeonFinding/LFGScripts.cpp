@@ -197,6 +197,99 @@ static void UpdateFakeTankBuffForGroup(Group* group)
     }
 }
 
+// Check if a player's class can tank (regardless of spec)
+static bool CanClassTank(uint8 playerClass)
+{
+    switch (playerClass)
+    {
+        case CLASS_WARRIOR:
+        case CLASS_PALADIN:
+        case CLASS_DRUID:
+        case CLASS_DEATH_KNIGHT:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Check if the group still has someone with the tank role
+static bool GroupHasTank(Group* group, ObjectGuid excludeGuid = ObjectGuid::Empty)
+{
+    if (!group)
+        return false;
+
+    for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* member = itr->GetSource())
+        {
+            if (member->GetGUID() == excludeGuid)
+                continue;
+
+            uint8 roles = sLFGMgr->GetRoles(member->GetGUID());
+            if (roles & PLAYER_ROLE_TANK)
+                return true;
+        }
+    }
+    return false;
+}
+
+// Assign a fallback tank from remaining group members who can tank
+// Returns true if a fallback tank was assigned
+static bool AssignFallbackTank(Group* group, ObjectGuid leavingPlayerGuid)
+{
+    if (!group || !group->isLFGGroup())
+        return false;
+
+    // Check if group still has a tank after this player leaves
+    if (GroupHasTank(group, leavingPlayerGuid))
+        return false; // Already have a tank, no fallback needed
+
+    // Find a player whose class can tank
+    Player* fallbackTank = nullptr;
+    for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* member = itr->GetSource())
+        {
+            if (member->GetGUID() == leavingPlayerGuid)
+                continue;
+
+            if (CanClassTank(member->GetClass()))
+            {
+                // Prefer a player who is actually tank spec
+                if (IsPlayerTankSpec(member))
+                {
+                    fallbackTank = member;
+                    break; // Best choice, stop searching
+                }
+                else if (!fallbackTank)
+                {
+                    fallbackTank = member; // Keep as candidate, continue searching for better
+                }
+            }
+        }
+    }
+
+    if (fallbackTank)
+    {
+        // Assign tank role to the fallback player
+        ObjectGuid fallbackGuid = fallbackTank->GetGUID();
+        uint8 currentRoles = sLFGMgr->GetRoles(fallbackGuid);
+        uint8 newRoles = currentRoles | PLAYER_ROLE_TANK;
+        sLFGMgr->SetRoles(fallbackGuid, newRoles);
+
+        // Update LFG roles in the group as well
+        group->SetLfgRoles(fallbackGuid, newRoles);
+
+        TC_LOG_DEBUG("lfg", "LFGScripts::AssignFallbackTank: Assigned {} (Class: {}) as fallback tank",
+            fallbackTank->GetName(), fallbackTank->GetClass());
+
+        return true;
+    }
+
+    TC_LOG_DEBUG("lfg", "LFGScripts::AssignFallbackTank: No eligible fallback tank found in group");
+    return false;
+}
+
 LFGPlayerScript::LFGPlayerScript() : PlayerScript("LFGPlayerScript") { }
 
 void LFGPlayerScript::OnLogout(Player* player)
@@ -346,6 +439,9 @@ void LFGGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod 
 
     LfgState state = sLFGMgr->GetState(gguid);
 
+    // Save the leaving player's roles before they are removed from LFG data
+    uint8 leavingPlayerRoles = sLFGMgr->GetRoles(guid);
+
     // If group is being formed after proposal success do nothing more
     if (state == LFG_STATE_PROPOSAL && method == GROUP_REMOVEMETHOD_DEFAULT)
     {
@@ -377,8 +473,17 @@ void LFGGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod 
             sLFGMgr->TeleportPlayer(player, true);
     }
 
+    // Check if the leaving player was the tank and assign a fallback if needed
+    if (isLFG && state == LFG_STATE_DUNGEON)
+    {
+        if (leavingPlayerRoles & PLAYER_ROLE_TANK)
+        {
+            // Try to assign a fallback tank from remaining members
+            AssignFallbackTank(group, guid);
+        }
+    }
+
     // Update fake tank buff for remaining group members
-    // This handles the case where the removed player was tank and roles might shift
     if (isLFG)
     {
         UpdateFakeTankBuffForGroup(group);
