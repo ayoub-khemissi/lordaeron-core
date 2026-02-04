@@ -998,14 +998,17 @@ void LFGMgr::MakeNewGroup(LfgProposal const& proposal)
 
         grp->SetLfgRoles(pguid, proposal.players.find(pguid)->second.role);
 
-        // Add the cooldown spell if queued for a random dungeon
-        const LfgDungeonSet& dungeons = GetSelectedDungeons(player->GetGUID());
-        if (!dungeons.empty())
+        // Add the cooldown spell if queued for a random dungeon (skip in testing mode)
+        if (!m_Testing)
         {
-            uint32 rDungeonId = (*dungeons.begin());
-            LFGDungeonEntry const* dungeonEntry = sLFGDungeonStore.LookupEntry(rDungeonId);
-            if (dungeonEntry && dungeonEntry->TypeID == LFG_TYPE_RANDOM)
-                player->CastSpell(player, LFG_SPELL_DUNGEON_COOLDOWN, false);
+            const LfgDungeonSet& dungeons = GetSelectedDungeons(player->GetGUID());
+            if (!dungeons.empty())
+            {
+                uint32 rDungeonId = (*dungeons.begin());
+                LFGDungeonEntry const* dungeonEntry = sLFGDungeonStore.LookupEntry(rDungeonId);
+                if (dungeonEntry && dungeonEntry->TypeID == LFG_TYPE_RANDOM)
+                    player->CastSpell(player, LFG_SPELL_DUNGEON_COOLDOWN, false);
+            }
         }
     }
 
