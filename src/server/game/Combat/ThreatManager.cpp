@@ -677,6 +677,11 @@ void ThreatManager::ProcessAIUpdates()
 
 /*static*/ float ThreatManager::CalculateModifiedThreat(float threat, Unit const* victim, SpellInfo const* spell)
 {
+    // Fake Tank Buff (LFG non-tank spec queued as tank) - 100% increased threat generation
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF_THREAT = 70731;
+    if (victim->HasAura(LFG_SPELL_FAKE_TANK_BUFF_THREAT))
+        threat *= 2.f; // 100% increased threat (2x multiplier)
+
     // modifiers by spell
     if (spell)
     {

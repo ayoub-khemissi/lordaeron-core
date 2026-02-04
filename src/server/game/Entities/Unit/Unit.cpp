@@ -2242,10 +2242,14 @@ MeleeHitOutcome Unit::RollMeleeOutcomeAgainst(Unit const* victim, WeaponAttackTy
 
     // 7. CRUSHING
     // mobs can score crushing blows if they're 4 or more levels above victim
+    // Players with the Fake Tank buff (LFG non-tank spec queued as tank) are immune to crushing blows
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF = 70731;
     if (GetLevelForTarget(victim) >= victim->GetLevelForTarget(this) + 4 &&
         // can be from by creature (if can) or from controlled player that considered as creature
         !IsControlledByPlayer() &&
-        !(GetTypeId() == TYPEID_UNIT && ToCreature()->GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NO_CRUSHING_BLOWS))
+        !(GetTypeId() == TYPEID_UNIT && ToCreature()->GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_NO_CRUSHING_BLOWS) &&
+        // Fake tank buff immunity to crushing blows
+        !victim->HasAura(LFG_SPELL_FAKE_TANK_BUFF))
     {
         // when their weapon skill is 15 or more above victim's defense skill
         tmp = victimDefenseSkill;
@@ -6572,6 +6576,11 @@ uint32 Unit::SpellDamageBonusDone(Unit* victim, SpellInfo const* spellProto, uin
         DoneTotal += int32(DoneAdvertisedBenefit * coeff * factorMod);
     }
 
+    // Fake Tank Buff (LFG non-tank spec queued as tank) - 33% damage dealt reduction
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF_SPELL_DEALT = 70731;
+    if (HasAura(LFG_SPELL_FAKE_TANK_BUFF_SPELL_DEALT))
+        DoneTotalMod *= 0.67f; // 33% damage dealt reduction
+
     float tmpDamage = float(int32(pdamage) + DoneTotal) * DoneTotalMod;
 
     // apply spellmod to Done damage (flat and pct)
@@ -6935,6 +6944,11 @@ uint32 Unit::SpellDamageBonusTaken(Unit* caster, SpellInfo const* spellProto, ui
                 break;
         }
     }
+
+    // Fake Tank Buff (LFG non-tank spec queued as tank) - 50% damage reduction
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF_SPELL = 70731;
+    if (HasAura(LFG_SPELL_FAKE_TANK_BUFF_SPELL))
+        TakenTotalMod *= 0.5f; // 50% damage reduction
 
     // Spells with SPELL_ATTR4_FIXED_DAMAGE should only benefit from mechanic damage mod auras.
     if (!spellProto->HasAttribute(SPELL_ATTR4_FIXED_DAMAGE))
@@ -8015,6 +8029,11 @@ uint32 Unit::MeleeDamageBonusDone(Unit* victim, uint32 pdamage, WeaponAttackType
         }
     }
 
+    // Fake Tank Buff (LFG non-tank spec queued as tank) - 33% damage dealt reduction
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF_DEALT = 70731;
+    if (HasAura(LFG_SPELL_FAKE_TANK_BUFF_DEALT))
+        DoneTotalMod *= 0.67f; // 33% damage dealt reduction
+
     float tmpDamage = float(int32(pdamage) + DoneFlatBenefit) * DoneTotalMod;
 
     // bonus result can be negative
@@ -8102,6 +8121,11 @@ uint32 Unit::MeleeDamageBonusTaken(Unit* attacker, uint32 pdamage, WeaponAttackT
     //    {
     //    }
     //}*/
+
+    // Fake Tank Buff (LFG non-tank spec queued as tank) - 50% damage reduction
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF_MELEE = 70731;
+    if (HasAura(LFG_SPELL_FAKE_TANK_BUFF_MELEE))
+        TakenTotalMod *= 0.5f; // 50% damage reduction
 
     if (attType != RANGED_ATTACK)
         TakenTotalMod *= GetTotalAuraMultiplier(SPELL_AURA_MOD_MELEE_DAMAGE_TAKEN_PCT);

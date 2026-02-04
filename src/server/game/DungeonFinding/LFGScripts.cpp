@@ -21,6 +21,7 @@
 
 #include "LFGScripts.h"
 #include "Common.h"
+#include "DBCStores.h"
 #include "Group.h"
 #include "LFGMgr.h"
 #include "Log.h"
@@ -33,6 +34,168 @@
 
 namespace lfg
 {
+
+// Tank talent tree tab IDs for each class
+enum TankTalentTabs
+{
+    TALENT_TAB_WARRIOR_PROTECTION   = 163,  // Protection Warrior
+    TALENT_TAB_PALADIN_PROTECTION   = 382,  // Protection Paladin
+    TALENT_TAB_DRUID_FERAL          = 281,  // Feral Combat Druid (can be tank or cat)
+    TALENT_TAB_DK_BLOOD             = 398,  // Blood DK (official tank spec in WotLK)
+};
+
+// Key tanking talents to identify if a feral druid is bear spec
+enum DruidBearTalents
+{
+    TALENT_THICK_HIDE               = 16929, // Thick Hide (Rank 1)
+    TALENT_SURVIVAL_OF_THE_FITTEST  = 33853, // Survival of the Fittest (Rank 1)
+    TALENT_NATURAL_REACTION         = 57878, // Natural Reaction (Rank 1)
+    TALENT_PROTECTOR_OF_THE_PACK    = 57873, // Protector of the Pack (Rank 1)
+};
+
+// Check if a player has a tank specialization based on their talents
+static bool IsPlayerTankSpec(Player* player)
+{
+    if (!player)
+        return false;
+
+    uint8 playerClass = player->GetClass();
+    uint8 activeSpec = player->GetActiveSpec();
+
+    // Count talent points in each tree for the active spec
+    uint32 const* talentTabIds = GetTalentTabPages(playerClass);
+    if (!talentTabIds)
+        return false;
+
+    // Calculate points in each talent tree
+    uint32 talentPoints[3] = { 0, 0, 0 };
+
+    for (uint32 i = 0; i < sTalentStore.GetNumRows(); ++i)
+    {
+        TalentEntry const* talentInfo = sTalentStore.LookupEntry(i);
+        if (!talentInfo)
+            continue;
+
+        TalentTabEntry const* talentTabInfo = sTalentTabStore.LookupEntry(talentInfo->TabID);
+        if (!talentTabInfo)
+            continue;
+
+        // Skip talents not for this class
+        if ((talentTabInfo->ClassMask & player->GetClassMask()) == 0)
+            continue;
+
+        // Find which tree index this talent belongs to
+        for (uint8 tree = 0; tree < 3; ++tree)
+        {
+            if (talentTabIds[tree] == talentInfo->TabID)
+            {
+                // Count points in this talent
+                for (uint8 rank = MAX_TALENT_RANK; rank > 0; --rank)
+                {
+                    if (talentInfo->SpellRank[rank - 1] && player->HasTalent(talentInfo->SpellRank[rank - 1], activeSpec))
+                    {
+                        talentPoints[tree] += rank;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // Determine primary tree (the one with most points)
+    uint8 primaryTree = 0;
+    uint32 maxPoints = talentPoints[0];
+    for (uint8 i = 1; i < 3; ++i)
+    {
+        if (talentPoints[i] > maxPoints)
+        {
+            maxPoints = talentPoints[i];
+            primaryTree = i;
+        }
+    }
+
+    // Check if the primary tree is a tank tree based on class
+    switch (playerClass)
+    {
+        case CLASS_WARRIOR:
+            // Protection is the 3rd tree (index 2)
+            return primaryTree == 2;
+
+        case CLASS_PALADIN:
+            // Protection is the 2nd tree (index 1)
+            return primaryTree == 1;
+
+        case CLASS_DRUID:
+        {
+            // Feral is the 2nd tree (index 1), but we need to check for bear talents
+            if (primaryTree != 1)
+                return false;
+
+            // Check for key bear tanking talents
+            bool hasBearTalents = player->HasTalent(TALENT_THICK_HIDE, activeSpec) ||
+                                  player->HasTalent(TALENT_SURVIVAL_OF_THE_FITTEST, activeSpec) ||
+                                  player->HasTalent(TALENT_NATURAL_REACTION, activeSpec) ||
+                                  player->HasTalent(TALENT_PROTECTOR_OF_THE_PACK, activeSpec);
+            return hasBearTalents;
+        }
+
+        case CLASS_DEATH_KNIGHT:
+            // Blood is the official tank spec in WotLK (index 0)
+            // Uses Frost Presence for armor/threat, Death Strike for self-healing
+            return primaryTree == 0;
+
+        default:
+            return false;
+    }
+}
+
+// Update fake tank buff for a player based on their role and spec
+static void UpdateFakeTankBuff(Player* player, Group* group)
+{
+    if (!player || !group)
+        return;
+
+    ObjectGuid playerGuid = player->GetGUID();
+    uint8 roles = sLFGMgr->GetRoles(playerGuid);
+    bool hasTankRole = (roles & PLAYER_ROLE_TANK) != 0;
+    bool isTankSpec = IsPlayerTankSpec(player);
+    bool hasBuff = player->HasAura(LFG_SPELL_FAKE_TANK_BUFF);
+
+    // Should have buff: has tank role but is NOT a tank spec
+    bool shouldHaveBuff = hasTankRole && !isTankSpec;
+
+    if (shouldHaveBuff && !hasBuff)
+    {
+        player->CastSpell(player, LFG_SPELL_FAKE_TANK_BUFF, true);
+        TC_LOG_DEBUG("lfg", "LFGScripts::UpdateFakeTankBuff: Applied fake tank buff to {} (Class: {}, Role: Tank, Spec: Non-Tank)",
+            player->GetName(), player->GetClass());
+    }
+    else if (!shouldHaveBuff && hasBuff)
+    {
+        player->RemoveAurasDueToSpell(LFG_SPELL_FAKE_TANK_BUFF);
+        TC_LOG_DEBUG("lfg", "LFGScripts::UpdateFakeTankBuff: Removed fake tank buff from {} (hasTankRole: {}, isTankSpec: {})",
+            player->GetName(), hasTankRole, isTankSpec);
+    }
+}
+
+// Update fake tank buff for all members of a group
+static void UpdateFakeTankBuffForGroup(Group* group)
+{
+    if (!group)
+        return;
+
+    for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+    {
+        if (Player* member = itr->GetSource())
+        {
+            if (member->GetMap() && member->GetMap()->IsDungeon())
+            {
+                UpdateFakeTankBuff(member, group);
+            }
+        }
+    }
+}
 
 LFGPlayerScript::LFGPlayerScript() : PlayerScript("LFGPlayerScript") { }
 
@@ -89,6 +252,7 @@ void LFGPlayerScript::OnMapChanged(Player* player)
         {
             sLFGMgr->LeaveLfg(player->GetGUID());
             player->RemoveAurasDueToSpell(LFG_SPELL_LUCK_OF_THE_DRAW);
+            player->RemoveAurasDueToSpell(LFG_SPELL_FAKE_TANK_BUFF);
             player->TeleportTo(player->m_homebindMapId, player->m_homebindX, player->m_homebindY, player->m_homebindZ, 0.0f);
             TC_LOG_ERROR("lfg", "LFGPlayerScript::OnMapChanged, Player {} {} is in LFG dungeon map but does not have a valid group! "
                 "Teleporting to homebind.", player->GetName(), player->GetGUID().ToString());
@@ -101,6 +265,9 @@ void LFGPlayerScript::OnMapChanged(Player* player)
 
         if (sLFGMgr->selectedRandomLfgDungeon(player->GetGUID()))
             player->CastSpell(player, LFG_SPELL_LUCK_OF_THE_DRAW, true);
+
+        // Apply fake tank buff if player has tank role but is not tank spec
+        UpdateFakeTankBuff(player, group);
     }
     else
     {
@@ -113,6 +280,7 @@ void LFGPlayerScript::OnMapChanged(Player* player)
                 player->GetName(), player->GetGUID().ToString());
         }
         player->RemoveAurasDueToSpell(LFG_SPELL_LUCK_OF_THE_DRAW);
+        player->RemoveAurasDueToSpell(LFG_SPELL_FAKE_TANK_BUFF);
     }
 }
 
@@ -146,6 +314,13 @@ void LFGGroupScript::OnAddMember(Group* group, ObjectGuid guid)
 
     sLFGMgr->SetGroup(guid, gguid);
     sLFGMgr->AddPlayerToGroup(gguid, guid);
+
+    // When a new member joins, update fake tank buff for all group members
+    // This handles the case where a new tank joins after someone left
+    if (group->isLFGGroup())
+    {
+        UpdateFakeTankBuffForGroup(group);
+    }
 }
 
 void LFGGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod method, ObjectGuid kicker, char const* reason)
@@ -194,9 +369,19 @@ void LFGGroupScript::OnRemoveMember(Group* group, ObjectGuid guid, RemoveMethod 
         //else if (state == LFG_STATE_BOOT)
             // Update internal kick cooldown of kicked
 
+        // Remove fake tank buff when leaving group
+        player->RemoveAurasDueToSpell(LFG_SPELL_FAKE_TANK_BUFF);
+
         player->GetSession()->SendLfgUpdateParty(LfgUpdateData(LFG_UPDATETYPE_LEADER_UNK1));
         if (isLFG && player->GetMap()->IsDungeon())            // Teleport player out the dungeon
             sLFGMgr->TeleportPlayer(player, true);
+    }
+
+    // Update fake tank buff for remaining group members
+    // This handles the case where the removed player was tank and roles might shift
+    if (isLFG)
+    {
+        UpdateFakeTankBuffForGroup(group);
     }
 
     if (isLFG && state != LFG_STATE_FINISHED_DUNGEON) // Need more players to finish the dungeon

@@ -52,6 +52,7 @@ enum LFGMgrEnum
     LFG_SPELL_DUNGEON_COOLDOWN                   = 71328,
     LFG_SPELL_DUNGEON_DESERTER                   = 71041,
     LFG_SPELL_LUCK_OF_THE_DRAW                   = 72221,
+    LFG_SPELL_FAKE_TANK_BUFF                     = 70731,  // Vegard Shield 2 - buff for non-tank specs queued as tank
     LFG_GROUP_KICK_VOTES_NEEDED                  = 3
 };
 
