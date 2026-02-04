@@ -314,6 +314,11 @@ void Player::UpdateMaxHealth()
     value += GetFlatModifierValue(unitMod, TOTAL_VALUE) + GetHealthBonusFromStamina();
     value *= GetPctModifierValue(unitMod, TOTAL_PCT);
 
+    // Fake tank buff (non-tank spec queued as tank) - 50% HP increase
+    constexpr uint32 LFG_SPELL_FAKE_TANK_BUFF = 70731;
+    if (HasAura(LFG_SPELL_FAKE_TANK_BUFF))
+        value *= 1.5f;
+
     SetMaxHealth((uint32)value);
 }
 

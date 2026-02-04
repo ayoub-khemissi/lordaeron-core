@@ -4737,6 +4737,38 @@ class spell_gen_submerged : public SpellScript
     }
 };
 
+// LFG Fake Tank Buff (70731) - Recalculates health when applied/removed for the 50% HP bonus
+class spell_gen_lfg_fake_tank_buff : public AuraScript
+{
+    PrepareAuraScript(spell_gen_lfg_fake_tank_buff);
+
+    void OnApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        if (Player* player = GetTarget()->ToPlayer())
+        {
+            float healthPct = player->GetHealthPct();
+            player->UpdateMaxHealth();
+            player->SetHealth(std::max<uint32>(1, CalculatePct(player->GetMaxHealth(), healthPct)));
+        }
+    }
+
+    void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
+    {
+        if (Player* player = GetTarget()->ToPlayer())
+        {
+            float healthPct = player->GetHealthPct();
+            player->UpdateMaxHealth();
+            player->SetHealth(std::max<uint32>(1, CalculatePct(player->GetMaxHealth(), healthPct)));
+        }
+    }
+
+    void Register() override
+    {
+        OnEffectApply += AuraEffectApplyFn(spell_gen_lfg_fake_tank_buff::OnApply, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+        OnEffectRemove += AuraEffectRemoveFn(spell_gen_lfg_fake_tank_buff::OnRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
 void AddSC_generic_spell_scripts()
 {
     RegisterSpellScript(spell_gen_absorb0_hitlimit1);
@@ -4890,4 +4922,5 @@ void AddSC_generic_spell_scripts()
     RegisterSpellScript(spell_gen_charmed_unit_spell_cooldown);
     RegisterSpellScript(spell_gen_cannon_blast);
     RegisterSpellScript(spell_gen_submerged);
+    RegisterSpellScript(spell_gen_lfg_fake_tank_buff);
 }
