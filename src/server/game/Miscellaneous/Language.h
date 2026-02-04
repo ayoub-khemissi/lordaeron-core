@@ -743,7 +743,9 @@ enum TrinityStrings
     LANG_BATTLEGROUND_PREMATURE_FINISH_WARNING = 750,       // "Not enough players. This game will close in %u mins."
     LANG_BATTLEGROUND_PREMATURE_FINISH_WARNING_SECS = 751,  // "Not enough players. This game will close in %u seconds."
 //                                        = 752, see LANG_PINFO_ACC_IP
-    // 753-755 - free
+    LANG_DEBUG_LFG_ON                     = 753,
+    LANG_DEBUG_LFG_OFF                    = 754,
+    // 755 - free
 
     // Room for BG/ARENA                  = 773-784
     LANG_ARENA_TESTING                    = 785,

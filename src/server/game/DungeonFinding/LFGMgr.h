@@ -360,6 +360,10 @@ class TC_GAME_API LFGMgr
         void Clean();
         /// Dumps the state of the queue - Only for internal testing
         std::string DumpQueueInfo(bool full = false);
+        /// Toggles debug testing mode (allows solo queue)
+        void ToggleTesting();
+        /// Returns whether debug testing mode is enabled
+        bool isTesting() const { return m_Testing; }
 
         // LFGScripts
         /// Get leader of the group (using internal data)
@@ -469,6 +473,7 @@ class TC_GAME_API LFGMgr
         uint32 m_QueueTimer;                               /// used to check interval of update
         uint32 m_lfgProposalId;                            /// used as internal counter for proposals
         uint32 m_options;                                  /// Stores config options
+        bool m_Testing;                                    /// Debug testing mode (allows solo queue)
 
         LfgQueueContainer QueuesStore;                     /// Queues
         LfgCachedDungeonContainer CachedDungeonMapStore;   /// Stores all dungeons by groupType

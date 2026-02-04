@@ -57,6 +57,7 @@ public:
             { "queue",      HandleLfgQueueInfoCommand,      rbac::RBAC_PERM_COMMAND_LFG_QUEUE,      Console::Yes },
             { "clean",      HandleLfgCleanCommand,          rbac::RBAC_PERM_COMMAND_LFG_CLEAN,      Console::Yes },
             { "options",    HandleLfgOptionsCommand,        rbac::RBAC_PERM_COMMAND_LFG_OPTIONS,    Console::Yes },
+            { "testing",    HandleLfgTestingCommand,        rbac::RBAC_PERM_COMMAND_LFG_OPTIONS,    Console::Yes },
         };
 
         static ChatCommandTable commandTable =
@@ -147,6 +148,12 @@ public:
     {
         handler->PSendSysMessage(LANG_LFG_CLEAN);
         sLFGMgr->Clean();
+        return true;
+    }
+
+    static bool HandleLfgTestingCommand(ChatHandler* /*handler*/)
+    {
+        sLFGMgr->ToggleTesting();
         return true;
     }
 };

@@ -18,6 +18,7 @@
 #include "LFGMgr.h"
 #include "Common.h"
 #include "DatabaseEnv.h"
+#include "Language.h"
 #include "DBCStores.h"
 #include "DisableMgr.h"
 #include "GameEventMgr.h"
@@ -58,7 +59,7 @@ LFGDungeonData::LFGDungeonData(LFGDungeonEntry const* dbc) : id(dbc->ID), name(d
 }
 
 LFGMgr::LFGMgr(): m_QueueTimer(0), m_lfgProposalId(1),
-    m_options(sWorld->getIntConfig(CONFIG_LFG_OPTIONSMASK))
+    m_options(sWorld->getIntConfig(CONFIG_LFG_OPTIONSMASK)), m_Testing(false)
 {
 }
 
@@ -865,6 +866,10 @@ bool LFGMgr::CheckGroupRoles(LfgRolesMap& groles)
 {
     if (groles.empty())
         return false;
+
+    // In testing mode, allow any group composition (including solo)
+    if (sLFGMgr->isTesting())
+        return true;
 
     uint8 damage = 0;
     uint8 tank = 0;
@@ -2046,6 +2051,12 @@ time_t LFGMgr::GetQueueJoinTime(ObjectGuid guid)
 void LFGMgr::Clean()
 {
     QueuesStore.clear();
+}
+
+void LFGMgr::ToggleTesting()
+{
+    m_Testing = !m_Testing;
+    sWorld->SendWorldText(m_Testing ? LANG_DEBUG_LFG_ON : LANG_DEBUG_LFG_OFF);
 }
 
 bool LFGMgr::isOptionEnabled(uint32 option)
