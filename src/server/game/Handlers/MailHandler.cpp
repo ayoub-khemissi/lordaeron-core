@@ -30,8 +30,35 @@
 #include "ObjectMgr.h"
 #include "Opcodes.h"
 #include "Player.h"
+#include "SharedDefines.h"
 #include "World.h"
 #include "WorldPacket.h"
+
+// Epic Progression: Get effective expansion for a player by GUID (works for offline players)
+static uint8 GetMailReceiverEffectiveExpansion(ObjectGuid guid)
+{
+    // Try to find player online first
+    if (Player* player = ObjectAccessor::FindPlayer(guid))
+        return player->GetEffectiveExpansion();
+
+    // Player is offline, check database for quest completion
+    ObjectGuid::LowType guidLow = guid.GetCounter();
+    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100009); // Kil'jaeden -> WotLK
+    PreparedQueryResult result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_WRATH_OF_THE_LICH_KING;
+
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100004); // C'Thun -> TBC
+    result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_THE_BURNING_CRUSADE;
+
+    return EXPANSION_CLASSIC;
+}
 
 bool WorldSession::CanOpenMailBox(ObjectGuid guid)
 {
@@ -113,6 +140,14 @@ void WorldSession::HandleSendMail(WorldPackets::Mail::SendMail& sendMail)
     if (player->GetGUID() == receiverGuid)
     {
         player->SendMailResult(0, MAIL_SEND, MAIL_ERR_CANNOT_SEND_TO_SELF);
+        return;
+    }
+
+    // Epic Progression: Cannot send mail to players with different expansion
+    if (player->GetEffectiveExpansion() != GetMailReceiverEffectiveExpansion(receiverGuid))
+    {
+        SendNotification("You cannot send mail to players with a different expansion progression.");
+        player->SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
         return;
     }
 
