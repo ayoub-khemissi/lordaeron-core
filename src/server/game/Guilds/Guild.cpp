@@ -39,6 +39,33 @@
 #include "WorldSession.h"
 #include <boost/iterator/counting_iterator.hpp>
 
+// Epic Progression: Get effective expansion for a player by GUID (works for offline players)
+static uint8 GetGuildMemberEffectiveExpansion(ObjectGuid::LowType guidLow)
+{
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(guidLow);
+
+    // Try to find player online first
+    if (Player* player = ObjectAccessor::FindPlayer(guid))
+        return player->GetEffectiveExpansion();
+
+    // Player is offline, check database for quest completion
+    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100009); // Kil'jaeden -> WotLK
+    PreparedQueryResult result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_WRATH_OF_THE_LICH_KING;
+
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100004); // C'Thun -> TBC
+    result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_THE_BURNING_CRUSADE;
+
+    return EXPANSION_CLASSIC;
+}
+
 size_t const MAX_GUILD_BANK_TAB_TEXT_LEN = 500;
 
 uint32 const EMBLEM_PRICE = 10 * GOLD;
@@ -413,6 +440,10 @@ bool Guild::BankTab::LoadItemFromDB(Field* fields)
 
     pItem->AddToWorld();
     m_items[slotId] = pItem;
+
+    // Epic Progression: Load depositor GUID
+    m_itemDepositors[slotId] = fields[16].GetUInt32();
+
     return true;
 }
 
@@ -465,7 +496,7 @@ void Guild::BankTab::SetText(std::string_view text)
 
 // Sets/removes contents of specified slot.
 // If pItem == nullptr contents are removed.
-bool Guild::BankTab::SetItem(CharacterDatabaseTransaction trans, uint8 slotId, Item* item)
+bool Guild::BankTab::SetItem(CharacterDatabaseTransaction trans, uint8 slotId, Item* item, ObjectGuid::LowType depositorGuid)
 {
     if (slotId >= GUILD_BANK_MAX_SLOTS)
         return false;
@@ -480,17 +511,28 @@ bool Guild::BankTab::SetItem(CharacterDatabaseTransaction trans, uint8 slotId, I
 
     if (item)
     {
+        // Epic Progression: Store depositor GUID
+        // If depositorGuid is 0, keep the existing depositor (for moves within bank)
+        if (depositorGuid != 0)
+            m_itemDepositors[slotId] = depositorGuid;
+
         stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_GUILD_BANK_ITEM);
         stmt->setUInt32(0, m_guildId);
         stmt->setUInt8 (1, m_tabId);
         stmt->setUInt8 (2, slotId);
         stmt->setUInt32(3, item->GetGUID().GetCounter());
+        stmt->setUInt32(4, m_itemDepositors[slotId]);  // Epic Progression: depositor
         trans->Append(stmt);
 
         item->SetGuidValue(ITEM_FIELD_CONTAINED, ObjectGuid::Empty);
         item->SetOwnerGUID(ObjectGuid::Empty);
         item->FSetState(ITEM_NEW);
         item->SaveToDB(trans);                                 // Not in inventory and can be saved standalone
+    }
+    else
+    {
+        // Item removed, clear depositor
+        m_itemDepositors[slotId] = 0;
     }
 
     return true;
@@ -733,7 +775,7 @@ void EmblemInfo::SaveToDB(ObjectGuid::LowType guildId) const
 
 // MoveItemData
 Guild::MoveItemData::MoveItemData(Guild* guild, Player* player, uint8 container, uint8 slotId) : m_pGuild(guild), m_pPlayer(player),
-m_container(container), m_slotId(slotId), m_pItem(nullptr), m_pClonedItem(nullptr)
+m_container(container), m_slotId(slotId), m_pItem(nullptr), m_pClonedItem(nullptr), m_depositorGuid(0)
 {
 }
 
@@ -793,6 +835,9 @@ bool Guild::PlayerMoveItemData::InitItem()
     m_pItem = m_pPlayer->GetItemByPos(m_container, m_slotId);
     if (m_pItem)
     {
+        // Epic Progression: Cache player GUID as depositor
+        m_depositorGuid = m_pPlayer->GetGUID().GetCounter();
+
         // Anti-WPE protection. Do not move non-empty bags to bank.
         if (m_pItem->IsNotEmptyBag())
         {
@@ -825,7 +870,7 @@ void Guild::PlayerMoveItemData::RemoveItem(CharacterDatabaseTransaction trans, M
     }
 }
 
-Item* Guild::PlayerMoveItemData::StoreItem(CharacterDatabaseTransaction trans, Item* pItem)
+Item* Guild::PlayerMoveItemData::StoreItem(CharacterDatabaseTransaction trans, Item* pItem, MoveItemData* /*pFrom*/)
 {
     ASSERT(pItem);
     m_pPlayer->MoveItemToInventory(m_vec, pItem, true);
@@ -850,6 +895,13 @@ inline InventoryResult Guild::PlayerMoveItemData::CanStore(Item* pItem, bool swa
 bool Guild::BankMoveItemData::InitItem()
 {
     m_pItem = m_pGuild->_GetItem(m_container, m_slotId);
+
+    if (m_pItem)
+    {
+        // Epic Progression: Cache original depositor GUID
+        if (BankTab* pTab = m_pGuild->GetBankTab(m_container))
+            m_depositorGuid = pTab->GetItemDepositor(m_slotId);
+    }
     return (m_pItem != nullptr);
 }
 
@@ -873,7 +925,30 @@ bool Guild::BankMoveItemData::HasWithdrawRights(MoveItemData* pOther) const
     if (Member const* member = m_pGuild->GetMember(m_pPlayer->GetGUID()))
         slots = m_pGuild->_GetMemberRemainingSlots(*member, m_container);
 
-    return slots != 0;
+    if (slots == 0)
+        return false;
+
+    // Epic Progression: Check expansion when withdrawing to character (not to bank)
+    if (!pOther->IsBank())
+    {
+        BankTab* pTab = m_pGuild->GetBankTab(m_container);
+        if (pTab)
+        {
+            ObjectGuid::LowType depositorGuid = pTab->GetItemDepositor(m_slotId);
+            // If depositor is unknown (0), treat as Vanilla (most restrictive)
+            uint8 depositorExpansion = depositorGuid ? GetGuildMemberEffectiveExpansion(depositorGuid) : EXPANSION_CLASSIC;
+            uint8 playerExpansion = m_pPlayer->GetEffectiveExpansion();
+
+            // Player can only take items from depositors of same or lower expansion
+            if (depositorExpansion > playerExpansion)
+            {
+                ChatHandler(m_pPlayer->GetSession()).PSendSysMessage("|cFFFF0000[Epic Progression]|r You cannot withdraw items deposited by players of a higher expansion.");
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 void Guild::BankMoveItemData::RemoveItem(CharacterDatabaseTransaction trans, MoveItemData* pOther, uint32 splitedAmount)
@@ -895,7 +970,7 @@ void Guild::BankMoveItemData::RemoveItem(CharacterDatabaseTransaction trans, Mov
         m_pGuild->_UpdateMemberWithdrawSlots(trans, m_pPlayer->GetGUID(), m_container);
 }
 
-Item* Guild::BankMoveItemData::StoreItem(CharacterDatabaseTransaction trans, Item* pItem)
+Item* Guild::BankMoveItemData::StoreItem(CharacterDatabaseTransaction trans, Item* pItem, MoveItemData* pFrom)
 {
     if (!pItem)
         return nullptr;
@@ -914,7 +989,7 @@ Item* Guild::BankMoveItemData::StoreItem(CharacterDatabaseTransaction trans, Ite
 
         TC_LOG_DEBUG("guild", "GUILD STORAGE: StoreItem tab = {}, slot = {}, item = {}, count = {}",
             m_container, m_slotId, pItem->GetEntry(), pItem->GetCount());
-        pLastItem = _StoreItem(trans, pTab, pItem, pos, itr != m_vec.end());
+        pLastItem = _StoreItem(trans, pTab, pItem, pos, itr != m_vec.end(), pFrom);
     }
     return pLastItem;
 }
@@ -945,7 +1020,7 @@ void Guild::BankMoveItemData::LogAction(MoveItemData* pFrom) const
     }
 }
 
-Item* Guild::BankMoveItemData::_StoreItem(CharacterDatabaseTransaction trans, BankTab* pTab, Item* pItem, ItemPosCount& pos, bool clone) const
+Item* Guild::BankMoveItemData::_StoreItem(CharacterDatabaseTransaction trans, BankTab* pTab, Item* pItem, ItemPosCount& pos, bool clone, MoveItemData* pFrom) const
 {
     uint8 slotId = uint8(pos.pos);
     uint32 count = pos.count;
@@ -968,7 +1043,20 @@ Item* Guild::BankMoveItemData::_StoreItem(CharacterDatabaseTransaction trans, Ba
     else
         pItem->SetCount(count);
 
-    if (pItem && pTab->SetItem(trans, slotId, pItem))
+    // Epic Progression: Store depositor GUID
+    ObjectGuid::LowType depositorGuid = 0;
+
+    if (pFrom)
+    {
+        depositorGuid = pFrom->GetDepositorGuid();
+    }
+    else
+    {
+        // Fallback if pFrom is missing (should not happen in standard flow)
+        depositorGuid = m_pPlayer->GetGUID().GetCounter();
+    }
+
+    if (pItem && pTab->SetItem(trans, slotId, pItem, depositorGuid))
         return pItem;
 
     return nullptr;
@@ -1734,6 +1822,13 @@ bool Guild::HandleMemberWithdrawMoney(WorldSession* session, uint32 amount, bool
         return false;
 
     Player* player = session->GetPlayer();
+
+    // Epic Progression: Only WotLK players can withdraw gold from guild bank
+    if (player->GetEffectiveExpansion() < EXPANSION_WRATH_OF_THE_LICH_KING)
+    {
+        ChatHandler(session).PSendSysMessage("|cFFFF0000[Epic Progression]|r Only players who have reached Northrend can withdraw gold from the guild bank.");
+        return false;
+    }
 
     Member* member = GetMember(player->GetGUID());
     if (!member)
@@ -2782,11 +2877,11 @@ bool Guild::_DoItemsMove(MoveItemData* pSrc, MoveItemData* pDest, bool sendError
         pDest->RemoveItem(trans, pSrc);
 
     // 6. Store item in destination
-    pDest->StoreItem(trans, pSrcItem);
+    pDest->StoreItem(trans, pSrcItem, pSrc);
 
     // 7. Store item in source
     if (swap)
-        pSrc->StoreItem(trans, pDestItem);
+        pSrc->StoreItem(trans, pDestItem, pDest);
 
     CharacterDatabase.CommitTransaction(trans);
     return true;

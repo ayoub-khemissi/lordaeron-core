@@ -526,13 +526,17 @@ class TC_GAME_API Guild
                 std::string const& GetText() const { return m_text; }
 
                 inline Item* GetItem(uint8 slotId) const { return slotId < GUILD_BANK_MAX_SLOTS ?  m_items[slotId] : nullptr; }
-                bool SetItem(CharacterDatabaseTransaction trans, uint8 slotId, Item* pItem);
+                bool SetItem(CharacterDatabaseTransaction trans, uint8 slotId, Item* pItem, ObjectGuid::LowType depositorGuid = 0);
+
+                // Epic Progression: Get depositor GUID for an item slot
+                ObjectGuid::LowType GetItemDepositor(uint8 slotId) const { return slotId < GUILD_BANK_MAX_SLOTS ? m_itemDepositors[slotId] : 0; }
 
             private:
                 ObjectGuid::LowType m_guildId;
                 uint8 m_tabId;
 
                 std::array<Item*, GUILD_BANK_MAX_SLOTS> m_items = {};
+                std::array<ObjectGuid::LowType, GUILD_BANK_MAX_SLOTS> m_itemDepositors = {};  // Epic Progression: track who deposited each item
                 std::string m_name;
                 std::string m_icon;
                 std::string m_text;
@@ -561,7 +565,7 @@ class TC_GAME_API Guild
                 // Remove item from container (if splited update items fields)
                 virtual void RemoveItem(CharacterDatabaseTransaction trans, MoveItemData* pOther, uint32 splitedAmount = 0) = 0;
                 // Saves item to container
-                virtual Item* StoreItem(CharacterDatabaseTransaction trans, Item* pItem) = 0;
+                virtual Item* StoreItem(CharacterDatabaseTransaction trans, Item* pItem, MoveItemData* pFrom) = 0;
                 // Log bank event
                 virtual void LogBankEvent(CharacterDatabaseTransaction trans, MoveItemData* pFrom, uint32 count) const = 0;
                 // Log GM action
@@ -573,6 +577,9 @@ class TC_GAME_API Guild
                 uint8 GetContainer() const { return m_container; }
                 uint8 GetSlotId() const { return m_slotId; }
 
+                // Epic Progression: Cache depositor GUID to preserve it during moves
+                ObjectGuid::LowType GetDepositorGuid() const { return m_depositorGuid; }
+
             protected:
                 virtual InventoryResult CanStore(Item* pItem, bool swap) = 0;
 
@@ -583,6 +590,7 @@ class TC_GAME_API Guild
                 Item* m_pItem;
                 Item* m_pClonedItem;
                 std::vector<ItemPosCount> m_vec;
+                ObjectGuid::LowType m_depositorGuid;
         };
 
         class PlayerMoveItemData : public MoveItemData
@@ -594,7 +602,7 @@ class TC_GAME_API Guild
                 bool IsBank() const override { return false; }
                 bool InitItem() override;
                 void RemoveItem(CharacterDatabaseTransaction trans, MoveItemData* pOther, uint32 splitedAmount = 0) override;
-                Item* StoreItem(CharacterDatabaseTransaction trans, Item* pItem) override;
+                Item* StoreItem(CharacterDatabaseTransaction trans, Item* pItem, MoveItemData* pFrom) override;
                 void LogBankEvent(CharacterDatabaseTransaction trans, MoveItemData* pFrom, uint32 count) const override;
             protected:
                 InventoryResult CanStore(Item* pItem, bool swap) override;
@@ -611,7 +619,7 @@ class TC_GAME_API Guild
                 bool HasStoreRights(MoveItemData* pOther) const override;
                 bool HasWithdrawRights(MoveItemData* pOther) const override;
                 void RemoveItem(CharacterDatabaseTransaction trans, MoveItemData* pOther, uint32 splitedAmount) override;
-                Item* StoreItem(CharacterDatabaseTransaction trans, Item* pItem) override;
+                Item* StoreItem(CharacterDatabaseTransaction trans, Item* pItem, MoveItemData* pFrom) override;
                 void LogBankEvent(CharacterDatabaseTransaction trans, MoveItemData* pFrom, uint32 count) const override;
                 void LogAction(MoveItemData* pFrom) const override;
 
@@ -619,7 +627,7 @@ class TC_GAME_API Guild
                 InventoryResult CanStore(Item* pItem, bool swap) override;
 
             private:
-                Item* _StoreItem(CharacterDatabaseTransaction trans, BankTab* pTab, Item* pItem, ItemPosCount& pos, bool clone) const;
+                Item* _StoreItem(CharacterDatabaseTransaction trans, BankTab* pTab, Item* pItem, ItemPosCount& pos, bool clone, MoveItemData* pFrom) const;
                 bool _ReserveSpace(uint8 slotId, Item* pItem, Item* pItemDest, uint32& count);
                 void CanStoreItemInTab(Item* pItem, uint8 skipSlotId, bool merge, uint32& count);
         };
