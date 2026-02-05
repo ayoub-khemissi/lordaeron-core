@@ -107,7 +107,6 @@ void WorldSession::HandleGroupInviteOpcode(WorldPackets::Party::PartyInviteClien
     // Epic Progression: Cannot group with players from different expansion
     if (!invitingPlayer->IsGameMaster() && invitingPlayer->GetEffectiveExpansion() != invitedPlayer->GetEffectiveExpansion())
     {
-        SendPartyResult(PARTY_OP_INVITE, packet.TargetName, ERR_INVITE_RESTRICTED);
         ChatHandler(this).PSendSysMessage("|cFFFF0000[Epic Progression]|r You cannot group with players from a different expansion progression.");
         return;
     }
