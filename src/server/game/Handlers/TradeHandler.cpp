@@ -646,6 +646,15 @@ void WorldSession::HandleInitiateTradeOpcode(WorldPacket& recvPacket)
         return;
     }
 
+    // Epic Progression: Cannot trade with players from different expansion
+    if (GetPlayer()->GetEffectiveExpansion() != pOther->GetEffectiveExpansion())
+    {
+        SendNotification("You cannot trade with players from a different expansion progression.");
+        info.Status = TRADE_STATUS_CLOSE_WINDOW;
+        SendTradeStatus(info);
+        return;
+    }
+
     if (!pOther->IsAlive())
     {
         info.Status = TRADE_STATUS_TARGET_DEAD;

@@ -30,9 +30,37 @@
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "SharedDefines.h"
 #include "UpdateMask.h"
 #include "Util.h"
 #include "World.h"
+
+// Epic Progression: Get effective expansion for a player by GUID (works for offline players)
+static uint8 GetAuctionOwnerEffectiveExpansion(ObjectGuid::LowType guidLow)
+{
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(guidLow);
+
+    // Try to find player online first
+    if (Player* player = ObjectAccessor::FindPlayer(guid))
+        return player->GetEffectiveExpansion();
+
+    // Player is offline, check database for quest completion
+    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100009); // Kil'jaeden -> WotLK
+    PreparedQueryResult result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_WRATH_OF_THE_LICH_KING;
+
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100004); // C'Thun -> TBC
+    result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_THE_BURNING_CRUSADE;
+
+    return EXPANSION_CLASSIC;
+}
 #include "WorldPacket.h"
 
 //void called when player click on auctioneer npc
@@ -495,6 +523,14 @@ void WorldSession::HandleAuctionPlaceBid(WorldPacket& recvData)
     {
         //you cannot bid your another character auction:
         SendAuctionCommandResult(auction, AUCTION_PLACE_BID, ERR_AUCTION_BID_OWN);
+        return;
+    }
+
+    // Epic Progression: Cannot bid on auctions from players with different expansion
+    if (player->GetEffectiveExpansion() != GetAuctionOwnerEffectiveExpansion(auction->owner))
+    {
+        SendNotification("You cannot bid on auctions from players with a different expansion progression.");
+        SendAuctionCommandResult(auction, AUCTION_PLACE_BID, ERR_AUCTION_RESTRICTED_ACCOUNT);
         return;
     }
 

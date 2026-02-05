@@ -32,9 +32,40 @@
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "SharedDefines.h"
 #include "World.h"
 #include "WorldSession.h"
 #include "WowTime.h"
+
+// Epic Progression: Get effective expansion for a player by GUID (works for offline players)
+static uint8 GetPlayerEffectiveExpansionByGuid(ObjectGuid::LowType guidLow)
+{
+    ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>(guidLow);
+
+    // Try to find player online first
+    if (Player* player = ObjectAccessor::FindPlayer(guid))
+        return player->GetEffectiveExpansion();
+
+    // Player is offline, check database for quest completion
+    // Quest 100009 (Kil'jaeden) -> WotLK
+    // Quest 100004 (C'Thun) -> TBC
+
+    CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100009);
+    PreparedQueryResult result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_WRATH_OF_THE_LICH_KING;
+
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+    stmt->setUInt32(0, guidLow);
+    stmt->setUInt32(1, 100004);
+    result = CharacterDatabase.Query(stmt);
+    if (result)
+        return EXPANSION_THE_BURNING_CRUSADE;
+
+    return EXPANSION_CLASSIC;
+}
 
 enum eAuctionHouse
 {
@@ -714,6 +745,9 @@ void AuctionHouseObject::BuildListAuctionItems(WorldPacket& data, Player* player
     auto itr = GetAllThrottleMap.find(player->GetGUID());
     time_t throttleTime = itr != GetAllThrottleMap.end() ? itr->second : curTime;
 
+    // Epic Progression: Get player's effective expansion for filtering
+    uint8 playerExpansion = player->GetEffectiveExpansion();
+
     if (getall && throttleTime <= curTime)
     {
         for (AuctionEntryMap::const_iterator it = AuctionsMap.begin(); it != AuctionsMap.end(); ++it)
@@ -721,6 +755,10 @@ void AuctionHouseObject::BuildListAuctionItems(WorldPacket& data, Player* player
             AuctionEntry* Aentry = it->second;
             // Skip expired auctions
             if (Aentry->expire_time < curTime)
+                continue;
+
+            // Epic Progression: Skip auctions from players with different expansion
+            if (GetPlayerEffectiveExpansionByGuid(Aentry->owner) != playerExpansion)
                 continue;
 
             Item* item = sAuctionMgr->GetAItem(Aentry->itemGUIDLow);
@@ -743,6 +781,10 @@ void AuctionHouseObject::BuildListAuctionItems(WorldPacket& data, Player* player
         AuctionEntry* Aentry = it->second;
         // Skip expired auctions
         if (Aentry->expire_time < curTime)
+            continue;
+
+        // Epic Progression: Skip auctions from players with different expansion
+        if (GetPlayerEffectiveExpansionByGuid(Aentry->owner) != playerExpansion)
             continue;
 
         Item* item = sAuctionMgr->GetAItem(Aentry->itemGUIDLow);

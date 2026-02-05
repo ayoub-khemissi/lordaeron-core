@@ -17,6 +17,7 @@
 
 #include "WorldSession.h"
 #include "CharacterCache.h"
+#include "Chat.h"
 #include "Common.h"
 #include "DatabaseEnv.h"
 #include "Group.h"
@@ -100,6 +101,14 @@ void WorldSession::HandleGroupInviteOpcode(WorldPackets::Party::PartyInviteClien
     if (!invitingPlayer->IsGameMaster() && !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP) && invitingPlayer->GetTeam() != invitedPlayer->GetTeam())
     {
         SendPartyResult(PARTY_OP_INVITE, packet.TargetName, ERR_PLAYER_WRONG_FACTION);
+        return;
+    }
+
+    // Epic Progression: Cannot group with players from different expansion
+    if (!invitingPlayer->IsGameMaster() && invitingPlayer->GetEffectiveExpansion() != invitedPlayer->GetEffectiveExpansion())
+    {
+        SendPartyResult(PARTY_OP_INVITE, packet.TargetName, ERR_INVITE_RESTRICTED);
+        ChatHandler(this).PSendSysMessage("|cFFFF0000[Epic Progression]|r You cannot group with players from a different expansion progression.");
         return;
     }
     if (invitingPlayer->GetInstanceId() != 0 && invitedPlayer->GetInstanceId() != 0 && invitingPlayer->GetInstanceId() != invitedPlayer->GetInstanceId() && invitingPlayer->GetMapId() == invitedPlayer->GetMapId())
