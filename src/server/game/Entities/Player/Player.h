@@ -2399,6 +2399,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         RewardedQuestSet m_RewardedQuests;
         QuestStatusSaveMap m_RewardedQuestsSave;
+        bool m_rewardedQuestsLoaded = false;  // Epic Progression: track if quests are loaded for GetEffectiveExpansion
 
         SkillStatusMap mSkillStatus;
 

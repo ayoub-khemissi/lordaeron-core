@@ -15670,13 +15670,36 @@ uint8 Player::GetEffectiveExpansion() const
     // - Quest 100004 (C'Thun + Ossirian) -> Unlocks TBC
     // - Quest 100009 (Kil'jaeden) -> Unlocks WotLK
 
-    // Check if player has completed WotLK unlock quest
-    if (GetQuestRewardStatus(100009))
-        return EXPANSION_WRATH_OF_THE_LICH_KING;
+    // If quests are loaded, use fast in-memory check
+    if (m_rewardedQuestsLoaded)
+    {
+        if (GetQuestRewardStatus(100009))
+            return EXPANSION_WRATH_OF_THE_LICH_KING;
 
-    // Check if player has completed TBC unlock quest
-    if (GetQuestRewardStatus(100004))
-        return EXPANSION_THE_BURNING_CRUSADE;
+        if (GetQuestRewardStatus(100004))
+            return EXPANSION_THE_BURNING_CRUSADE;
+
+        return EXPANSION_CLASSIC;
+    }
+
+    // Quests not loaded yet (during LoadFromDB), check database directly
+    ObjectGuid::LowType guidLow = GetGUID().GetCounter();
+    if (guidLow)
+    {
+        CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+        stmt->setUInt32(0, guidLow);
+        stmt->setUInt32(1, 100009); // Kil'jaeden -> WotLK
+        PreparedQueryResult result = CharacterDatabase.Query(stmt);
+        if (result)
+            return EXPANSION_WRATH_OF_THE_LICH_KING;
+
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHARACTER_QUESTSTATUSREW_BY_QUEST);
+        stmt->setUInt32(0, guidLow);
+        stmt->setUInt32(1, 100004); // C'Thun -> TBC
+        result = CharacterDatabase.Query(stmt);
+        if (result)
+            return EXPANSION_THE_BURNING_CRUSADE;
+    }
 
     // Default: Vanilla only
     return EXPANSION_CLASSIC;
@@ -18348,6 +18371,9 @@ void Player::_LoadQuestStatusRewarded(PreparedQueryResult result)
         }
         while (result->NextRow());
     }
+
+    // Epic Progression: mark quests as loaded for GetEffectiveExpansion optimization
+    m_rewardedQuestsLoaded = true;
 }
 
 void Player::_LoadDailyQuestStatus(PreparedQueryResult result)
