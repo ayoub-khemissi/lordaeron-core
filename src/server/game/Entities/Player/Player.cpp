@@ -14887,6 +14887,8 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
         {
             if (uint32 itemId = quest->RewardItemId[i])
             {
+                itemId = GetEpicProgressionEmblemId(itemId);
+
                 ItemPosCountVec dest;
                 if (CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, quest->RewardItemIdCount[i]) == EQUIP_ERR_OK)
                 {
@@ -24614,20 +24616,21 @@ void Player::AutoStoreLoot(uint8 bag, uint8 slot, uint32 loot_id, LootStore cons
     for (uint32 i = 0; i < max_slot; ++i)
     {
         LootItem* lootItem = loot.LootItemInSlot(i, this);
+        uint32 itemId = GetEpicProgressionEmblemId(lootItem->itemid);
 
         ItemPosCountVec dest;
-        InventoryResult msg = CanStoreNewItem(bag, slot, dest, lootItem->itemid, lootItem->count);
+        InventoryResult msg = CanStoreNewItem(bag, slot, dest, itemId, lootItem->count);
         if (msg != EQUIP_ERR_OK && slot != NULL_SLOT)
-            msg = CanStoreNewItem(bag, NULL_SLOT, dest, lootItem->itemid, lootItem->count);
+            msg = CanStoreNewItem(bag, NULL_SLOT, dest, itemId, lootItem->count);
         if (msg != EQUIP_ERR_OK && bag != NULL_BAG)
-            msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, lootItem->itemid, lootItem->count);
+            msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, lootItem->count);
         if (msg != EQUIP_ERR_OK)
         {
-            SendEquipError(msg, nullptr, nullptr, lootItem->itemid);
+            SendEquipError(msg, nullptr, nullptr, itemId);
             continue;
         }
 
-        Item* pItem = StoreNewItem(dest, lootItem->itemid, true, lootItem->randomPropertyId);
+        Item* pItem = StoreNewItem(dest, itemId, true, lootItem->randomPropertyId);
         SendNewItem(pItem, lootItem->count, false, createdByPlayer, broadcast);
     }
 }
@@ -24645,6 +24648,8 @@ void Player::StoreLootItem(uint8 lootSlot, Loot* loot)
         SendEquipError(EQUIP_ERR_LOOT_GONE, nullptr, nullptr);
         return;
     }
+
+    uint32 itemId = GetEpicProgressionEmblemId(item->itemid);
 
     if (!item->AllowedForPlayer(this))
     {
@@ -24667,10 +24672,10 @@ void Player::StoreLootItem(uint8 lootSlot, Loot* loot)
     }
 
     ItemPosCountVec dest;
-    InventoryResult msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, item->itemid, item->count);
+    InventoryResult msg = CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, item->count);
     if (msg == EQUIP_ERR_OK)
     {
-        Item* newitem = StoreNewItem(dest, item->itemid, true, item->randomPropertyId, item->GetAllowedLooters());
+        Item* newitem = StoreNewItem(dest, itemId, true, item->randomPropertyId, item->GetAllowedLooters());
 
         if (qitem)
         {
@@ -24705,9 +24710,9 @@ void Player::StoreLootItem(uint8 lootSlot, Loot* loot)
         --loot->unlootedCount;
 
         SendNewItem(newitem, uint32(item->count), false, false, true);
-        UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_ITEM, item->itemid, item->count);
+        UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_ITEM, itemId, item->count);
         UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_TYPE, loot->loot_type, item->count);
-        UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_EPIC_ITEM, item->itemid, item->count);
+        UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_EPIC_ITEM, itemId, item->count);
 
         // LootItem is being removed (looted) from the container, delete it from the DB.
         if (loot->containerID > 0)
@@ -24715,7 +24720,7 @@ void Player::StoreLootItem(uint8 lootSlot, Loot* loot)
 
     }
     else
-        SendEquipError(msg, nullptr, nullptr, item->itemid);
+        SendEquipError(msg, nullptr, nullptr, itemId);
 }
 
 uint32 Player::CalculateTalentsPoints() const
@@ -26664,4 +26669,66 @@ std::string Player::GetDebugInfo() const
 GameClient* Player::GetGameClient() const
 {
     return GetSession()->GetGameClient();
+}
+
+uint32 Player::GetEpicProgressionEmblemId(uint32 itemId) const
+{
+    // Emblem IDs
+    const uint32 EMBLEM_HEROISM  = 40752;
+    const uint32 EMBLEM_VALOR    = 40753;
+    const uint32 EMBLEM_CONQUEST = 45624;
+    const uint32 EMBLEM_TRIUMPH  = 47241;
+    const uint32 EMBLEM_FROST    = 49426;
+
+    // If item is not one of the emblems, return original ID
+    if (itemId != EMBLEM_HEROISM && itemId != EMBLEM_VALOR && itemId != EMBLEM_CONQUEST &&
+        itemId != EMBLEM_TRIUMPH && itemId != EMBLEM_FROST)
+        return itemId;
+
+    // Quest IDs
+    const uint32 QUEST_T7  = 100010;
+    const uint32 QUEST_T8  = 100011;
+    const uint32 QUEST_T9  = 100012;
+    const uint32 QUEST_T10 = 100013;
+
+    // Determine context (Dungeon vs Raid/Other)
+    bool isDungeon = false;
+    if (GetMap())
+        isDungeon = GetMap()->IsDungeon() && !GetMap()->IsRaid();
+
+    // Progression Logic
+    // If T7 (Naxx/Maly/Sarth) NOT completed
+    if (!GetQuestRewardStatus(QUEST_T7))
+    {
+        // Dungeon -> Heroism
+        // Raid/Other -> Valor
+        return isDungeon ? EMBLEM_HEROISM : EMBLEM_VALOR;
+    }
+
+    // If T8 (Ulduar) NOT completed (implies T7 done)
+    if (!GetQuestRewardStatus(QUEST_T8))
+    {
+        // Dungeon -> Valor
+        // Raid/Other -> Conquest
+        return isDungeon ? EMBLEM_VALOR : EMBLEM_CONQUEST;
+    }
+
+    // If T9 (ToC/Onyxia) NOT completed (implies T8 done)
+    if (!GetQuestRewardStatus(QUEST_T9))
+    {
+        // Dungeon -> Conquest
+        // Raid/Other -> Triumph
+        return isDungeon ? EMBLEM_CONQUEST : EMBLEM_TRIUMPH;
+    }
+
+    // If T10 (ICC) NOT completed (implies T9 done)
+    if (!GetQuestRewardStatus(QUEST_T10))
+    {
+        // Dungeon -> Triumph
+        // Raid/Other -> Frost
+        return isDungeon ? EMBLEM_TRIUMPH : EMBLEM_FROST;
+    }
+
+    // If T10 completed, full access
+    return itemId;
 }

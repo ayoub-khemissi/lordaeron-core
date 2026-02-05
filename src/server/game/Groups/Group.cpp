@@ -1520,23 +1520,24 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
 
                 if (player && player->GetSession())
                 {
-                    player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_ROLL_NEED_ON_LOOT, roll->itemid, maxresul);
+                    uint32 itemId = player->GetEpicProgressionEmblemId(roll->itemid);
+                    player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_ROLL_NEED_ON_LOOT, itemId, maxresul);
 
                     ItemPosCountVec dest;
                     LootItem* item = &(roll->itemSlot >= roll->getLoot()->items.size() ? roll->getLoot()->quest_items[roll->itemSlot - roll->getLoot()->items.size()] : roll->getLoot()->items[roll->itemSlot]);
-                    InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, roll->itemid, item->count);
+                    InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, item->count);
                     if (msg == EQUIP_ERR_OK)
                     {
                         item->is_looted = true;
                         roll->getLoot()->NotifyItemRemoved(roll->itemSlot);
                         roll->getLoot()->unlootedCount--;
-                        player->StoreNewItem(dest, roll->itemid, true, item->randomPropertyId, item->GetAllowedLooters());
+                        player->StoreNewItem(dest, itemId, true, item->randomPropertyId, item->GetAllowedLooters());
                     }
                     else
                     {
                         item->is_blocked = false;
                         item->rollWinnerGUID = player->GetGUID();
-                        player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                        player->SendEquipError(msg, nullptr, nullptr, itemId);
                     }
                 }
             }
@@ -1584,26 +1585,27 @@ void Group::CountTheRoll(Rolls::iterator rollI, Map* allowedMap)
 
                 if (player && player->GetSession())
                 {
-                    player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_ROLL_GREED_ON_LOOT, roll->itemid, maxresul);
+                    uint32 itemId = player->GetEpicProgressionEmblemId(roll->itemid);
+                    player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_ROLL_GREED_ON_LOOT, itemId, maxresul);
 
                     LootItem* item = &(roll->itemSlot >= roll->getLoot()->items.size() ? roll->getLoot()->quest_items[roll->itemSlot - roll->getLoot()->items.size()] : roll->getLoot()->items[roll->itemSlot]);
 
                     if (rollvote == GREED)
                     {
                         ItemPosCountVec dest;
-                        InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, roll->itemid, item->count);
+                        InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, itemId, item->count);
                         if (msg == EQUIP_ERR_OK)
                         {
                             item->is_looted = true;
                             roll->getLoot()->NotifyItemRemoved(roll->itemSlot);
                             roll->getLoot()->unlootedCount--;
-                            player->StoreNewItem(dest, roll->itemid, true, item->randomPropertyId, item->GetAllowedLooters());
+                            player->StoreNewItem(dest, itemId, true, item->randomPropertyId, item->GetAllowedLooters());
                         }
                         else
                         {
                             item->is_blocked = false;
                             item->rollWinnerGUID = player->GetGUID();
-                            player->SendEquipError(msg, nullptr, nullptr, roll->itemid);
+                            player->SendEquipError(msg, nullptr, nullptr, itemId);
                         }
                     }
                     else if (rollvote == DISENCHANT)
