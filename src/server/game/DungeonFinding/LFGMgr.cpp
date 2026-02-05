@@ -1695,7 +1695,7 @@ LfgLockMap const LFGMgr::GetLockedDungeons(ObjectGuid guid)
     }
 
     uint8 level = player->GetLevel();
-    uint8 expansion = player->GetSession()->Expansion();
+    uint8 expansion = player->GetEffectiveExpansion();
     LfgDungeonSet const& dungeons = GetDungeonsByRandom(0);
     bool denyJoin = !player->GetSession()->HasPermission(rbac::RBAC_PERM_JOIN_DUNGEON_FINDER);
 

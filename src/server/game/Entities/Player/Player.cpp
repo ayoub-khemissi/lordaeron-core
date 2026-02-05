@@ -1545,8 +1545,8 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
     if (!InBattleground() && mEntry->IsBattlegroundOrArena())
         return false;
 
-    // client without expansion support
-    if (GetSession()->Expansion() < mEntry->Expansion())
+    // client without expansion support (uses quest-based effective expansion)
+    if (GetEffectiveExpansion() < mEntry->Expansion())
     {
         TC_LOG_DEBUG("maps", "Player '{}' ({}) using client without required expansion tried teleport to non accessible map (MapID: {})",
             GetName(), GetGUID().ToString(), mapid);
@@ -2549,7 +2549,7 @@ void Player::InitStatsForLevel(bool reapplyMods)
     PlayerLevelInfo info;
     sObjectMgr->GetPlayerLevelInfo(GetRace(), GetClass(), GetLevel(), &info);
 
-    uint8 exp_max_lvl = GetMaxLevelForExpansion(GetSession()->Expansion());
+    uint8 exp_max_lvl = GetMaxLevelForExpansion(GetEffectiveExpansion());
     uint8 conf_max_lvl = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
     if (exp_max_lvl == DEFAULT_MAX_LEVEL || exp_max_lvl >= conf_max_lvl)
         SetUInt32Value(PLAYER_FIELD_MAX_LEVEL, conf_max_lvl);
@@ -15663,6 +15663,25 @@ QuestStatus Player::GetQuestStatus(uint32 quest_id) const
     return QUEST_STATUS_NONE;
 }
 
+uint8 Player::GetEffectiveExpansion() const
+{
+    // Epic Progression System - Quest-based expansion unlock
+    // ONLY quests determine expansion access, auth.account.expansion is ignored
+    // - Quest 100004 (C'Thun + Ossirian) -> Unlocks TBC
+    // - Quest 100009 (Kil'jaeden) -> Unlocks WotLK
+
+    // Check if player has completed WotLK unlock quest
+    if (GetQuestRewardStatus(100009))
+        return EXPANSION_WRATH_OF_THE_LICH_KING;
+
+    // Check if player has completed TBC unlock quest
+    if (GetQuestRewardStatus(100004))
+        return EXPANSION_THE_BURNING_CRUSADE;
+
+    // Default: Vanilla only
+    return EXPANSION_CLASSIC;
+}
+
 bool Player::CanShareQuest(uint32 quest_id) const
 {
     Quest const* qInfo = sObjectMgr->GetQuestTemplate(quest_id);
@@ -17239,10 +17258,10 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
 
     // Map could be changed before
     mapEntry = sMapStore.LookupEntry(mapId);
-    // client without expansion support
+    // client without expansion support (uses quest-based effective expansion)
     if (mapEntry)
     {
-        if (GetSession()->Expansion() < mapEntry->Expansion())
+        if (GetEffectiveExpansion() < mapEntry->Expansion())
         {
             TC_LOG_DEBUG("entities.player.loading", "Player::LoadFromDB: Player '{}' ({}) using client without required expansion tried login at non accessible map {}",
                 GetName(), GetGUID().ToString(), mapId);
@@ -18950,9 +18969,9 @@ bool Player::_LoadHomeBind(PreparedQueryResult result)
 
         MapEntry const* bindMapEntry = sMapStore.LookupEntry(m_homebindMapId);
 
-        // accept saved data only for valid position (and non instanceable), and accessable
+        // accept saved data only for valid position (and non instanceable), and accessable (uses quest-based effective expansion)
         if (MapManager::IsValidMapCoord(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ) &&
-            !bindMapEntry->Instanceable() && GetSession()->Expansion() >= bindMapEntry->Expansion())
+            !bindMapEntry->Instanceable() && GetEffectiveExpansion() >= bindMapEntry->Expansion())
             ok = true;
         else
         {

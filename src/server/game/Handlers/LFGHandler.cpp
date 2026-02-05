@@ -163,10 +163,10 @@ void WorldSession::SendLfgPlayerLockInfo()
 {
     ObjectGuid guid = GetPlayer()->GetGUID();
 
-    // Get Random dungeons that can be done at a certain level and expansion
+    // Get Random dungeons that can be done at a certain level and expansion (uses quest-based effective expansion)
     uint8 level = GetPlayer()->GetLevel();
     lfg::LfgDungeonSet const& randomDungeons =
-        sLFGMgr->GetRandomAndSeasonalDungeons(level, GetPlayer()->GetSession()->Expansion());
+        sLFGMgr->GetRandomAndSeasonalDungeons(level, GetPlayer()->GetEffectiveExpansion());
 
     // Get player locked Dungeons
     lfg::LfgLockMap const& lock = sLFGMgr->GetLockedDungeons(guid);

@@ -23,6 +23,7 @@
 #include "GameEventMgr.h"
 #include "GridNotifiersImpl.h"
 #include "Log.h"
+#include "Chat.h"
 #include "MotionMaster.h"
 #include "MoveSplineInit.h"
 #include "ObjectAccessor.h"
@@ -1591,6 +1592,27 @@ public:
 
         bool OnGossipHello(Player* player) override
         {
+            // Epic Progression: Check if player is allowed to toggle XP
+            // Level 60+ needs TBC expansion to enable XP
+            // Level 70+ needs WotLK expansion to enable XP
+            uint8 level = player->GetLevel();
+            uint8 expansion = player->GetEffectiveExpansion();
+
+            // Block XP toggle if at level cap without required expansion
+            bool isBlockedByProgression = false;
+            if (level >= 60 && level < 70 && expansion < EXPANSION_THE_BURNING_CRUSADE)
+                isBlockedByProgression = true;
+            else if (level >= 70 && expansion < EXPANSION_WRATH_OF_THE_LICH_KING)
+                isBlockedByProgression = true;
+
+            if (isBlockedByProgression)
+            {
+                // Don't show XP toggle options - player must complete epic progression
+                player->PlayerTalkClass->SendCloseGossip();
+                ChatHandler(player->GetSession()).PSendSysMessage("|cFFFF0000[Epic Progression]|r You must complete the raid progression to unlock experience gain beyond this level.");
+                return true;
+            }
+
             InitGossipMenuFor(player, MENU_ID_XP_ON_OFF);
             if (player->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_NO_XP_GAIN)) // not gaining XP
             {
@@ -1608,6 +1630,22 @@ public:
         bool OnGossipSelect(Player* player, uint32 /*menuId*/, uint32 gossipListId) override
         {
             uint32 const action = player->PlayerTalkClass->GetGossipOptionAction(gossipListId);
+
+            // Double-check progression restrictions before allowing XP toggle
+            uint8 level = player->GetLevel();
+            uint8 expansion = player->GetEffectiveExpansion();
+
+            bool isBlockedByProgression = false;
+            if (level >= 60 && level < 70 && expansion < EXPANSION_THE_BURNING_CRUSADE)
+                isBlockedByProgression = true;
+            else if (level >= 70 && expansion < EXPANSION_WRATH_OF_THE_LICH_KING)
+                isBlockedByProgression = true;
+
+            if (isBlockedByProgression)
+            {
+                CloseGossipMenuFor(player);
+                return false;
+            }
 
             switch (action)
             {

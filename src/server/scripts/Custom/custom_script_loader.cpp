@@ -16,9 +16,12 @@
  */
 
 // This is where scripts' loading functions should be declared:
+void AddSC_epic_progression_player_script();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
 void AddCustomScripts()
 {
+    AddSC_epic_progression_player_script();
 }
+
