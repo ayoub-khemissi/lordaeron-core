@@ -147,7 +147,6 @@ void WorldSession::HandleSendMail(WorldPackets::Mail::SendMail& sendMail)
     if (player->GetEffectiveExpansion() != GetMailReceiverEffectiveExpansion(receiverGuid))
     {
         SendNotification("You cannot send mail to players with a different expansion progression.");
-        player->SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
         return;
     }
 
