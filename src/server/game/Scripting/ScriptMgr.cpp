@@ -1982,6 +1982,11 @@ void ScriptMgr::OnMovieComplete(Player* player, uint32 movieId)
     FOREACH_SCRIPT(PlayerScript)->OnMovieComplete(player, movieId);
 }
 
+void ScriptMgr::OnPlayerResurrect(Player* player)
+{
+    FOREACH_SCRIPT(PlayerScript)->OnPlayerResurrect(player);
+}
+
 // Account
 void ScriptMgr::OnAccountLogin(uint32 accountId)
 {
@@ -2695,6 +2700,10 @@ void PlayerScript::OnQuestStatusChange(Player* /*player*/, uint32 /*questId*/)
 }
 
 void PlayerScript::OnPlayerRepop(Player* /*player*/)
+{
+}
+
+void PlayerScript::OnPlayerResurrect(Player* /*player*/)
 {
 }
 

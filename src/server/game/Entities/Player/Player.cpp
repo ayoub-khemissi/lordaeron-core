@@ -4409,6 +4409,8 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness)
     // recast lost by death auras of any items held in the inventory
     CastAllObtainSpells();
 
+    sScriptMgr->OnPlayerResurrect(this);
+
     if (!applySickness)
         return;
 

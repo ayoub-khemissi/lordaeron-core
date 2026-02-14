@@ -377,6 +377,21 @@ void LFGPlayerScript::OnMapChanged(Player* player)
     }
 }
 
+void LFGPlayerScript::OnPlayerResurrect(Player* player)
+{
+    if (!sLFGMgr->isOptionEnabled(LFG_OPTION_ENABLE_DUNGEON_FINDER | LFG_OPTION_ENABLE_RAID_BROWSER))
+        return;
+
+    Map const* map = player->GetMap();
+    if (sLFGMgr->inLfgDungeonMap(player->GetGUID(), map->GetId(), map->GetDifficulty()))
+    {
+        if (Group* group = player->GetGroup())
+        {
+            UpdateFakeTankBuff(player, group);
+        }
+    }
+}
+
 LFGGroupScript::LFGGroupScript() : GroupScript("LFGGroupScript") { }
 
 void LFGGroupScript::OnAddMember(Group* group, ObjectGuid guid)
