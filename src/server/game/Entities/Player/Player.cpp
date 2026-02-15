@@ -371,6 +371,7 @@ void Player::CleanupsBeforeDelete(bool finalCleanup)
 {
     TradeCancel(false);
     DuelComplete(DUEL_INTERRUPTED);
+    ClearAoeLoot();
 
     Unit::CleanupsBeforeDelete(finalCleanup);
 
@@ -8462,6 +8463,373 @@ void Player::SendLoot(ObjectGuid guid, LootType loot_type)
     // need know merged fishing/corpse loot type for achievements
     loot->loot_type = loot_type;
 
+    // AOE Loot: aggregate nearby lootable corpses into a single loot window
+    // AOE Loot: aggregate nearby lootable corpses into a single loot window
+    if (sWorld->getBoolConfig(CONFIG_AOE_LOOT_ENABLED) && loot_type == LOOT_CORPSE
+        && permission != NONE_PERMISSION && guid.IsUnit())
+    {
+        float aoeLootRange = sWorld->getFloatConfig(CONFIG_AOE_LOOT_RANGE);
+        std::list<Creature*> nearbyCreatures;
+        Trinity::LootableDeadCreatureInRangeCheck check(this, aoeLootRange);
+        Trinity::CreatureListSearcher<Trinity::LootableDeadCreatureInRangeCheck> searcher(this, nearbyCreatures, check);
+        Cell::VisitGridObjects(this, searcher, aoeLootRange);
+
+        TC_LOG_DEBUG("loot", "Player::SendLoot AOE: found {} lootable creatures in {} yards for player '{}'",
+            nearbyCreatures.size(), aoeLootRange, GetName());
+
+        // Only use AOE loot if we found more than just the primary creature
+        if (nearbyCreatures.size() > 1)
+        {
+            ClearAoeLoot();
+            m_isAoeLoot = true;
+
+            // Sort: primary creature first, then by distance
+            nearbyCreatures.sort([this, &guid](Creature* a, Creature* b) -> bool
+            {
+                if (a->GetGUID() == guid) return true;
+                if (b->GetGUID() == guid) return false;
+                return GetDistance(a) < GetDistance(b);
+            });
+
+            // Build the aggregated SMSG_LOOT_RESPONSE
+            WorldPacket data(SMSG_LOOT_RESPONSE, (9 + 50));
+            data << guid;
+            data << uint8(loot_type);
+
+            uint32 totalGold = 0;
+            uint8 totalItemsShown = 0;
+            constexpr uint8 MAX_AOE_LOOT_ITEMS = 16;
+
+            // Placeholder for gold and item count - we'll fill them later
+            size_t goldPos = data.wpos();
+            data << uint32(0);  // gold placeholder
+            size_t countPos = data.wpos();
+            data << uint8(0);   // item count placeholder
+
+            for (Creature* creature : nearbyCreatures)
+            {
+                if (totalItemsShown >= MAX_AOE_LOOT_ITEMS)
+                    break;
+
+                Loot* creatureLoot = &creature->loot;
+
+                // Initialize loot if needed (group loot setup)
+                if (creatureLoot->loot_type == LOOT_NONE)
+                {
+                    if (Group* group = creature->GetLootRecipientGroup())
+                    {
+                        switch (group->GetLootMethod())
+                        {
+                            case GROUP_LOOT:
+                                group->GroupLoot(creatureLoot, creature);
+                                break;
+                            case NEED_BEFORE_GREED:
+                                group->NeedBeforeGreed(creatureLoot, creature);
+                                break;
+                            case MASTER_LOOT:
+                                group->MasterLoot(creatureLoot, creature);
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+
+                creatureLoot->loot_type = loot_type;
+
+                // Determine permission for this creature
+                PermissionTypes creaturePerm;
+                if (creature->GetGUID() == guid)
+                    creaturePerm = permission; // already calculated above
+                else
+                {
+                    // Determine permission for secondary creature
+                    if (creature->GetLootRecipientGroup())
+                    {
+                        Group* group = GetGroup();
+                        if (group == creature->GetLootRecipientGroup())
+                        {
+                            switch (group->GetLootMethod())
+                            {
+                                case MASTER_LOOT:
+                                    creaturePerm = group->GetMasterLooterGuid() == GetGUID() ? MASTER_PERMISSION : RESTRICTED_PERMISSION;
+                                    break;
+                                case FREE_FOR_ALL:
+                                    creaturePerm = ALL_PERMISSION;
+                                    break;
+                                case ROUND_ROBIN:
+                                    creaturePerm = ROUND_ROBIN_PERMISSION;
+                                    break;
+                                default:
+                                    creaturePerm = GROUP_PERMISSION;
+                                    break;
+                            }
+                        }
+                        else
+                            creaturePerm = NONE_PERMISSION;
+                    }
+                    else if (creature->GetLootRecipient() == this)
+                        creaturePerm = OWNER_PERMISSION;
+                    else
+                        creaturePerm = NONE_PERMISSION;
+                }
+
+                if (creaturePerm == NONE_PERMISSION)
+                    continue;
+
+                totalGold += creatureLoot->gold;
+                m_aoeLootCreatures.push_back(creature->GetGUID());
+
+                Loot& l = *creatureLoot;
+
+                // Serialize regular items based on permission
+                auto serializeRegularItems = [&]()
+                {
+                    switch (creaturePerm)
+                    {
+                        case GROUP_PERMISSION:
+                        case MASTER_PERMISSION:
+                        case RESTRICTED_PERMISSION:
+                        {
+                            for (uint8 i = 0; i < l.items.size() && totalItemsShown < MAX_AOE_LOOT_ITEMS; ++i)
+                            {
+                                if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].conditions.empty() && l.items[i].AllowedForPlayer(this, l.roundRobinPlayer))
+                                {
+                                    uint8 slot_type;
+                                    if (l.items[i].is_blocked)
+                                    {
+                                        switch (creaturePerm)
+                                        {
+                                            case GROUP_PERMISSION:
+                                                slot_type = LOOT_SLOT_TYPE_ROLL_ONGOING;
+                                                break;
+                                            case MASTER_PERMISSION:
+                                                if (GetGroup() && GetGroup()->GetMasterLooterGuid() == GetGUID())
+                                                    slot_type = LOOT_SLOT_TYPE_MASTER;
+                                                else
+                                                    slot_type = LOOT_SLOT_TYPE_LOCKED;
+                                                break;
+                                            case RESTRICTED_PERMISSION:
+                                                slot_type = LOOT_SLOT_TYPE_LOCKED;
+                                                break;
+                                            default:
+                                                continue;
+                                        }
+                                    }
+                                    else if (!l.items[i].rollWinnerGUID.IsEmpty())
+                                    {
+                                        if (l.items[i].rollWinnerGUID == GetGUID())
+                                            slot_type = LOOT_SLOT_TYPE_OWNER;
+                                        else
+                                            continue;
+                                    }
+                                    else if (l.roundRobinPlayer.IsEmpty() || GetGUID() == l.roundRobinPlayer || !l.items[i].is_underthreshold)
+                                        slot_type = LOOT_SLOT_TYPE_ALLOW_LOOT;
+                                    else
+                                        continue;
+
+                                    uint8 aggregatedSlot = static_cast<uint8>(m_aoeLootSlots.size());
+                                    AoeLootSlotMapping mapping;
+                                    mapping.creatureGuid = creature->GetGUID();
+                                    mapping.realSlot = i;
+                                    mapping.isQuestItem = false;
+                                    m_aoeLootSlots.push_back(mapping);
+
+                                    data << uint8(aggregatedSlot) << l.items[i];
+                                    data << uint8(slot_type);
+                                    ++totalItemsShown;
+                                }
+                            }
+                            break;
+                        }
+                        case ROUND_ROBIN_PERMISSION:
+                        {
+                            for (uint8 i = 0; i < l.items.size() && totalItemsShown < MAX_AOE_LOOT_ITEMS; ++i)
+                            {
+                                if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].conditions.empty() && l.items[i].AllowedForPlayer(this, l.roundRobinPlayer))
+                                {
+                                    if (!l.roundRobinPlayer.IsEmpty() && GetGUID() != l.roundRobinPlayer)
+                                        continue;
+
+                                    uint8 aggregatedSlot = static_cast<uint8>(m_aoeLootSlots.size());
+                                    AoeLootSlotMapping mapping;
+                                    mapping.creatureGuid = creature->GetGUID();
+                                    mapping.realSlot = i;
+                                    mapping.isQuestItem = false;
+                                    m_aoeLootSlots.push_back(mapping);
+
+                                    data << uint8(aggregatedSlot) << l.items[i];
+                                    data << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
+                                    ++totalItemsShown;
+                                }
+                            }
+                            break;
+                        }
+                        case ALL_PERMISSION:
+                        case OWNER_PERMISSION:
+                        {
+                            uint8 slot_type = creaturePerm == OWNER_PERMISSION ? LOOT_SLOT_TYPE_OWNER : LOOT_SLOT_TYPE_ALLOW_LOOT;
+                            for (uint8 i = 0; i < l.items.size() && totalItemsShown < MAX_AOE_LOOT_ITEMS; ++i)
+                            {
+                                if (!l.items[i].is_looted && !l.items[i].freeforall && l.items[i].conditions.empty() && l.items[i].AllowedForPlayer(this, l.roundRobinPlayer))
+                                {
+                                    uint8 aggregatedSlot = static_cast<uint8>(m_aoeLootSlots.size());
+                                    AoeLootSlotMapping mapping;
+                                    mapping.creatureGuid = creature->GetGUID();
+                                    mapping.realSlot = i;
+                                    mapping.isQuestItem = false;
+                                    m_aoeLootSlots.push_back(mapping);
+
+                                    data << uint8(aggregatedSlot) << l.items[i];
+                                    data << uint8(slot_type);
+                                    ++totalItemsShown;
+                                }
+                            }
+                            break;
+                        }
+                        default:
+                            break;
+                    }
+                };
+                serializeRegularItems();
+
+                // Serialize quest items
+                LootSlotType slotType = creaturePerm == OWNER_PERMISSION ? LOOT_SLOT_TYPE_OWNER : LOOT_SLOT_TYPE_ALLOW_LOOT;
+                NotNormalLootItemMap const& questItems = l.GetPlayerQuestItems();
+                NotNormalLootItemMap::const_iterator q_itr = questItems.find(GetGUID());
+                if (q_itr != questItems.end())
+                {
+                    NotNormalLootItemList* q_list = q_itr->second;
+                    for (NotNormalLootItemList::const_iterator qi = q_list->begin(); qi != q_list->end() && totalItemsShown < MAX_AOE_LOOT_ITEMS; ++qi)
+                    {
+                        LootItem& item = l.quest_items[qi->index];
+                        if (!qi->is_looted && !item.is_looted)
+                        {
+                            uint8 aggregatedSlot = static_cast<uint8>(m_aoeLootSlots.size());
+                            AoeLootSlotMapping mapping;
+                            mapping.creatureGuid = creature->GetGUID();
+                            mapping.realSlot = static_cast<uint8>(l.items.size() + (qi - q_list->begin()));
+                            mapping.isQuestItem = true;
+                            m_aoeLootSlots.push_back(mapping);
+
+                            data << uint8(aggregatedSlot);
+                            data << item;
+                            if (item.follow_loot_rules)
+                            {
+                                switch (creaturePerm)
+                                {
+                                    case MASTER_PERMISSION:
+                                        data << uint8(LOOT_SLOT_TYPE_MASTER);
+                                        break;
+                                    case RESTRICTED_PERMISSION:
+                                        data << (item.is_blocked ? uint8(LOOT_SLOT_TYPE_LOCKED) : uint8(slotType));
+                                        break;
+                                    case GROUP_PERMISSION:
+                                    case ROUND_ROBIN_PERMISSION:
+                                        if (!item.is_blocked)
+                                            data << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
+                                        else
+                                            data << uint8(LOOT_SLOT_TYPE_ROLL_ONGOING);
+                                        break;
+                                    default:
+                                        data << uint8(slotType);
+                                        break;
+                                }
+                            }
+                            else
+                                data << uint8(slotType);
+                            ++totalItemsShown;
+                        }
+                    }
+                }
+
+                // Serialize FFA items
+                NotNormalLootItemMap const& ffaItems = l.GetPlayerFFAItems();
+                NotNormalLootItemMap::const_iterator ffa_itr = ffaItems.find(GetGUID());
+                if (ffa_itr != ffaItems.end())
+                {
+                    NotNormalLootItemList* ffa_list = ffa_itr->second;
+                    for (NotNormalLootItemList::const_iterator fi = ffa_list->begin(); fi != ffa_list->end() && totalItemsShown < MAX_AOE_LOOT_ITEMS; ++fi)
+                    {
+                        LootItem& item = l.items[fi->index];
+                        if (!fi->is_looted && !item.is_looted)
+                        {
+                            uint8 aggregatedSlot = static_cast<uint8>(m_aoeLootSlots.size());
+                            AoeLootSlotMapping mapping;
+                            mapping.creatureGuid = creature->GetGUID();
+                            mapping.realSlot = fi->index;
+                            mapping.isQuestItem = false;
+                            m_aoeLootSlots.push_back(mapping);
+
+                            data << uint8(aggregatedSlot);
+                            data << item;
+                            data << uint8(slotType);
+                            ++totalItemsShown;
+                        }
+                    }
+                }
+
+                // Serialize conditional items
+                NotNormalLootItemMap const& condItems = l.GetPlayerNonQuestNonFFAConditionalItems();
+                NotNormalLootItemMap::const_iterator nn_itr = condItems.find(GetGUID());
+                if (nn_itr != condItems.end())
+                {
+                    NotNormalLootItemList* conditional_list = nn_itr->second;
+                    for (NotNormalLootItemList::const_iterator ci = conditional_list->begin(); ci != conditional_list->end() && totalItemsShown < MAX_AOE_LOOT_ITEMS; ++ci)
+                    {
+                        LootItem& item = l.items[ci->index];
+                        if (!ci->is_looted && !item.is_looted)
+                        {
+                            uint8 aggregatedSlot = static_cast<uint8>(m_aoeLootSlots.size());
+                            AoeLootSlotMapping mapping;
+                            mapping.creatureGuid = creature->GetGUID();
+                            mapping.realSlot = ci->index;
+                            mapping.isQuestItem = false;
+                            m_aoeLootSlots.push_back(mapping);
+
+                            data << uint8(aggregatedSlot);
+                            data << item;
+                            switch (creaturePerm)
+                            {
+                                case MASTER_PERMISSION:
+                                    data << uint8(LOOT_SLOT_TYPE_MASTER);
+                                    break;
+                                case RESTRICTED_PERMISSION:
+                                    data << (item.is_blocked ? uint8(LOOT_SLOT_TYPE_LOCKED) : uint8(slotType));
+                                    break;
+                                case GROUP_PERMISSION:
+                                case ROUND_ROBIN_PERMISSION:
+                                    if (!item.is_blocked)
+                                        data << uint8(LOOT_SLOT_TYPE_ALLOW_LOOT);
+                                    else
+                                        data << uint8(LOOT_SLOT_TYPE_ROLL_ONGOING);
+                                    break;
+                                default:
+                                    data << uint8(slotType);
+                                    break;
+                            }
+                            ++totalItemsShown;
+                        }
+                    }
+                }
+
+                // Only add player to PlayersLooting on primary creature
+                if (creature->GetGUID() == guid)
+                    creatureLoot->AddLooter(GetGUID());
+            }
+
+            // Fill in gold and item count
+            data.put<uint32>(goldPos, totalGold);
+            data.put<uint8>(countPos, totalItemsShown);
+
+            SetLootGUID(guid);
+            SendDirectMessage(&data);
+            SetUnitFlag(UNIT_FLAG_LOOTING);
+            return;
+        }
+    }
+    // End AOE Loot
+
     if (permission != NONE_PERMISSION)
     {
         SetLootGUID(guid);
@@ -8499,9 +8867,26 @@ void Player::SendNotifyLootMoneyRemoved() const
 
 void Player::SendNotifyLootItemRemoved(uint8 lootSlot) const
 {
+    if (m_suppressLootNotifications)
+        return;
+
     WorldPacket data(SMSG_LOOT_REMOVED, 1);
     data << uint8(lootSlot);
     SendDirectMessage(&data);
+}
+
+void Player::ClearAoeLoot()
+{
+    m_aoeLootSlots.clear();
+    m_aoeLootCreatures.clear();
+    m_isAoeLoot = false;
+}
+
+Player::AoeLootSlotMapping const* Player::GetAoeLootSlotMapping(uint8 slot) const
+{
+    if (slot < m_aoeLootSlots.size())
+        return &m_aoeLootSlots[slot];
+    return nullptr;
 }
 
 void Player::SendUpdateWorldState(uint32 variable, uint32 value) const

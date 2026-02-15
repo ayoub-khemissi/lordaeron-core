@@ -647,6 +647,27 @@ namespace Trinity
             template<class NOT_INTERESTED> bool operator()(NOT_INTERESTED*) { return false; }
     };
 
+    class LootableDeadCreatureInRangeCheck
+    {
+        public:
+            LootableDeadCreatureInRangeCheck(Player const* player, float range)
+                : m_player(player), m_range(range) { }
+
+            bool operator()(Creature* creature) const
+            {
+                return !creature->IsAlive()
+                    && creature->HasDynamicFlag(UNIT_DYNFLAG_LOOTABLE)
+                    && creature->isTappedBy(m_player)
+                    && m_player->IsWithinDistInMap(creature, m_range);
+            }
+
+            template<class NOT_INTERESTED> bool operator()(NOT_INTERESTED*) const { return false; }
+
+        private:
+            Player const* m_player;
+            float m_range;
+    };
+
     // WorldObject do classes
 
     class RespawnDo

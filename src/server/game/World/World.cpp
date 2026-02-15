@@ -772,6 +772,9 @@ void World::LoadConfigSettings(bool reload)
 
     m_bool_configs[CONFIG_REGEN_HP_CANNOT_REACH_TARGET_IN_RAID] = sConfigMgr->GetBoolDefault("Creature.RegenHPCannotReachTargetInRaid", true);
 
+    m_bool_configs[CONFIG_AOE_LOOT_ENABLED] = sConfigMgr->GetBoolDefault("AoeLoot.Enable", false);
+    m_float_configs[CONFIG_AOE_LOOT_RANGE] = sConfigMgr->GetFloatDefault("AoeLoot.Range", 20.0f);
+
     if (reload)
     {
         uint32 val = sConfigMgr->GetIntDefault("GameType", 0);

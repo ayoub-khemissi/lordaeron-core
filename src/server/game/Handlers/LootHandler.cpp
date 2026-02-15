@@ -29,6 +29,7 @@
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "Player.h"
+#include "World.h"
 #include "WorldPacket.h"
 
 void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
@@ -79,6 +80,43 @@ void WorldSession::HandleAutostoreLootItemOpcode(WorldPacket& recvData)
     }
     else
     {
+        // AOE Loot: route to the correct creature based on slot mapping
+        if (player->IsAoeLoot())
+        {
+            Player::AoeLootSlotMapping const* mapping = player->GetAoeLootSlotMapping(lootSlot);
+            if (!mapping)
+            {
+                player->SendLootError(lguid, LOOT_ERROR_DIDNT_KILL);
+                return;
+            }
+
+            Creature* creature = player->GetMap()->GetCreature(mapping->creatureGuid);
+            if (!creature || creature->IsAlive() || !creature->IsWithinDistInMap(player, sWorld->getFloatConfig(CONFIG_AOE_LOOT_RANGE)))
+            {
+                player->SendLootError(lguid, LOOT_ERROR_TOO_FAR);
+                return;
+            }
+
+            loot = &creature->loot;
+
+            // Suppress internal loot notifications (they use real slots, not aggregated)
+            player->m_suppressLootNotifications = true;
+            player->StoreLootItem(mapping->realSlot, loot);
+            player->m_suppressLootNotifications = false;
+
+            // Send the correct notification with the aggregated slot
+            player->SendNotifyLootItemRemoved(lootSlot);
+
+            // If this creature's loot is fully looted, clean it up
+            if (loot->isLooted())
+            {
+                creature->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+                creature->AllLootRemovedFromCorpse();
+                loot->clear();
+            }
+            return;
+        }
+
         Creature* creature = GetPlayer()->GetMap()->GetCreature(lguid);
 
         bool lootAllowed = creature && creature->IsAlive() == (player->GetClass() == CLASS_ROGUE && creature->loot.loot_type == LOOT_PICKPOCKETING);
@@ -146,6 +184,71 @@ void WorldSession::HandleLootMoneyOpcode(WorldPacket& /*recvData*/)
         case HighGuid::Unit:
         case HighGuid::Vehicle:
         {
+            // AOE Loot: collect gold from all aggregated creatures
+            if (player->IsAoeLoot())
+            {
+                uint32 totalGold = 0;
+                for (ObjectGuid const& creatureGuid : player->GetAoeLootCreatures())
+                {
+                    Creature* aoeLootCreature = player->GetMap()->GetCreature(creatureGuid);
+                    if (aoeLootCreature && !aoeLootCreature->IsAlive())
+                        totalGold += aoeLootCreature->loot.gold;
+                }
+
+                if (totalGold > 0)
+                {
+                    if (shareMoney && player->GetGroup())
+                    {
+                        Group* group = player->GetGroup();
+                        std::vector<Player*> playersNear;
+                        for (GroupReference* itr = group->GetFirstMember(); itr != nullptr; itr = itr->next())
+                        {
+                            Player* member = itr->GetSource();
+                            if (!member)
+                                continue;
+                            if (player->IsAtGroupRewardDistance(member))
+                                playersNear.push_back(member);
+                        }
+
+                        uint32 goldPerPlayer = uint32(totalGold / playersNear.size());
+                        for (Player* member : playersNear)
+                        {
+                            member->ModifyMoney(goldPerPlayer);
+                            member->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_MONEY, goldPerPlayer);
+
+                            WorldPacket data(SMSG_LOOT_MONEY_NOTIFY, 4 + 1);
+                            data << uint32(goldPerPlayer);
+                            data << uint8(playersNear.size() <= 1);
+                            member->SendDirectMessage(&data);
+                        }
+                    }
+                    else
+                    {
+                        player->ModifyMoney(totalGold);
+                        player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_LOOT_MONEY, totalGold);
+
+                        WorldPacket data(SMSG_LOOT_MONEY_NOTIFY, 4 + 1);
+                        data << uint32(totalGold);
+                        data << uint8(1);
+                        player->SendDirectMessage(&data);
+                    }
+
+                    // Clear gold and notify on all creatures
+                    for (ObjectGuid const& creatureGuid : player->GetAoeLootCreatures())
+                    {
+                        Creature* aoeLootCreature = player->GetMap()->GetCreature(creatureGuid);
+                        if (aoeLootCreature && !aoeLootCreature->IsAlive())
+                        {
+                            aoeLootCreature->loot.NotifyMoneyRemoved();
+                            aoeLootCreature->loot.gold = 0;
+                        }
+                    }
+                }
+
+                player->SendNotifyLootMoneyRemoved();
+                return;
+            }
+
             Creature* creature = player->GetMap()->GetCreature(guid);
             bool lootAllowed = creature && creature->IsAlive() == (player->GetClass() == CLASS_ROGUE && creature->loot.loot_type == LOOT_PICKPOCKETING);
             if (lootAllowed && creature->IsWithinDistInMap(player, INTERACTION_DISTANCE))
@@ -263,6 +366,44 @@ void WorldSession::DoLootRelease(ObjectGuid lguid)
 
     if (!player->IsInWorld())
         return;
+
+    // AOE Loot: release all aggregated creatures
+    if (player->IsAoeLoot())
+    {
+        for (ObjectGuid const& creatureGuid : player->GetAoeLootCreatures())
+        {
+            Creature* creature = player->GetMap()->GetCreature(creatureGuid);
+            if (!creature)
+                continue;
+
+            Loot* creatureLoot = &creature->loot;
+            if (creatureLoot->isLooted())
+            {
+                creature->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+                if (!creature->IsAlive())
+                    creature->AllLootRemovedFromCorpse();
+                creatureLoot->clear();
+            }
+            else
+            {
+                // if the round robin player release, reset it.
+                if (player->GetGUID() == creatureLoot->roundRobinPlayer)
+                {
+                    creatureLoot->roundRobinPlayer.Clear();
+
+                    if (Group* group = player->GetGroup())
+                        group->SendLooter(creature, nullptr);
+                }
+                // force dynflag update to update looter and lootable info
+                creature->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
+            }
+
+            creatureLoot->RemoveLooter(player->GetGUID());
+        }
+
+        player->ClearAoeLoot();
+        return;
+    }
 
     if (lguid.IsGameObject())
     {

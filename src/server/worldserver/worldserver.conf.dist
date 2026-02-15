@@ -4166,3 +4166,28 @@ Metric.OverallStatusInterval = 1
 
 #
 ###################################################################################################
+
+###################################################################################################
+#
+#    AOE LOOT SETTINGS
+#
+#    AoeLoot.Enable
+#        Description: Enable area of effect looting. When a player loots a corpse, loot from all
+#                     nearby lootable corpses within range will be aggregated into a single loot window.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+#
+
+AoeLoot.Enable = 0
+
+#
+#    AoeLoot.Range
+#        Description: Maximum distance (in yards) to search for additional lootable corpses
+#                     around the looted creature.
+#        Default:     20.0
+#
+
+AoeLoot.Range = 20.0
+
+#
+###################################################################################################

@@ -1723,6 +1723,19 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         ObjectGuid GetLootGUID() const { return m_lootGuid; }
         void SetLootGUID(ObjectGuid guid) { m_lootGuid = guid; }
 
+        // AOE Loot
+        struct AoeLootSlotMapping
+        {
+            ObjectGuid creatureGuid;
+            uint8 realSlot;
+            bool isQuestItem;  // true if it's a quest item (slot = items.size() + qi)
+        };
+
+        bool IsAoeLoot() const { return m_isAoeLoot; }
+        void ClearAoeLoot();
+        AoeLootSlotMapping const* GetAoeLootSlotMapping(uint8 slot) const;
+        std::vector<ObjectGuid> const& GetAoeLootCreatures() const { return m_aoeLootCreatures; }
+
         void RemovedInsignia(Player* looterPlr);
 
         WorldSession* GetSession() const { return m_session; }
@@ -2377,6 +2390,12 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         void outDebugValues() const;
         ObjectGuid m_lootGuid;
+
+        // AOE Loot
+        std::vector<AoeLootSlotMapping> m_aoeLootSlots;
+        std::vector<ObjectGuid> m_aoeLootCreatures;
+        bool m_isAoeLoot = false;
+        bool m_suppressLootNotifications = false;
 
         uint32 m_team;
         uint32 m_nextSave;
