@@ -15,1025 +15,933 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-/* ScriptData
-SDName: boss_grand_champions
-SD%Complete: 50 %
-SDComment: Is missing the ai to make the npcs look for a new mount and use it.
-SDCategory: Trial Of the Champion
-EndScriptData */
-
 #include "ScriptMgr.h"
+#include "Creature.h"
 #include "InstanceScript.h"
-#include "Map.h"
+#include "MotionMaster.h"
 #include "ObjectAccessor.h"
-#include "Player.h"
-#include "ScriptedEscortAI.h"
-#include "trial_of_the_champion.h"
+#include "ScriptedCreature.h"
+#include "SpellAuras.h"
 #include "Vehicle.h"
+#include "trial_of_the_champion.h"
 
-enum Spells
+enum CommonSpells
 {
-    //Vehicle
-    SPELL_CHARGE                    = 63010,
+    SPELL_DEFEND_DUMMY              = 64101,        // triggers 62719, 64192
     SPELL_SHIELD_BREAKER            = 68504,
-    SPELL_SHIELD                    = 66482,
-
-    // Marshal Jacob Alerius && Mokra the Skullcrusher || Warrior
-    SPELL_MORTAL_STRIKE             = 68783,
-    SPELL_MORTAL_STRIKE_H           = 68784,
-    SPELL_BLADESTORM                = 63784,
-    SPELL_INTERCEPT                 = 67540,
-    SPELL_ROLLING_THROW             = 47115, //not implemented in the AI yet...
-
-    // Ambrose Boltspark && Eressea Dawnsinger || Mage
-    SPELL_FIREBALL                  = 66042,
-    SPELL_FIREBALL_H                = 68310,
-    SPELL_BLAST_WAVE                = 66044,
-    SPELL_BLAST_WAVE_H              = 68312,
-    SPELL_HASTE                     = 66045,
-    SPELL_POLYMORPH                 = 66043,
-    SPELL_POLYMORPH_H               = 68311,
-
-    // Colosos && Runok Wildmane || Shaman
-    SPELL_CHAIN_LIGHTNING           = 67529,
-    SPELL_CHAIN_LIGHTNING_H         = 68319,
-    SPELL_EARTH_SHIELD              = 67530,
-    SPELL_HEALING_WAVE              = 67528,
-    SPELL_HEALING_WAVE_H            = 68318,
-    SPELL_HEX_OF_MENDING            = 67534,
-
-    // Jaelyne Evensong && Zul'tore || Hunter
-    SPELL_DISENGAGE                 = 68340, //not implemented in the AI yet...
-    SPELL_LIGHTNING_ARROWS          = 66083,
-    SPELL_MULTI_SHOT                = 66081,
-    SPELL_SHOOT                     = 65868,
-    SPELL_SHOOT_H                   = 67988,
-
-    // Lana Stouthammer Evensong && Deathstalker Visceri || Rouge
-    SPELL_EVISCERATE                = 67709,
-    SPELL_EVISCERATE_H              = 68317,
-    SPELL_FAN_OF_KNIVES             = 67706,
-    SPELL_POISON_BOTTLE             = 67701
+    SPELL_CHARGE                    = 68301,        // triggers 68307
+    SPELL_CHARGE_VEHICLE            = 68307,
+    SPELL_FULL_HEAL                 = 43979,
+    SPELL_RIDE_ARGENT_VEHICLE       = 69692,
 };
 
-enum Seats
-{
-    SEAT_ID_0                       = 0
-};
+// ===== Shared base class for all 5 Grand Champions =====
 
-/*
-struct Point
+struct trial_companion_commonAI : public ScriptedAI
 {
-    float x, y, z;
-};
+    trial_companion_commonAI(Creature* creature) : ScriptedAI(creature)
+    {
+        _instance = static_cast<instance_trial_of_the_champion_InstanceMapScript*>(creature->GetInstanceScript());
+    }
 
-const Point MovementPoint[] =
-{
-  {746.84f, 623.15f, 411.41f},
-  {747.96f, 620.29f, 411.09f},
-  {750.23f, 618.35f, 411.09f}
-};
-*/
-void AggroAllPlayers(Creature* temp)
-{
-    Map::PlayerList const& PlList = temp->GetMap()->GetPlayers();
+    instance_trial_of_the_champion_InstanceMapScript* _instance;
 
-    if (PlList.isEmpty())
+    uint32 _shieldBreakerTimer;
+    uint32 _chargeTimer;
+    uint32 _defeatedTimer;
+    uint32 _resetThreatTimer;
+
+    bool _defeated;
+    ObjectGuid _newMountGuid;
+
+    void Reset() override
+    {
+        if (_instance)
+        {
+            if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+                me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+            else
+                DoCast(me, SPELL_DEFEND_DUMMY, true);
+        }
+
+        _shieldBreakerTimer = urand(3000, 5000);
+        _chargeTimer        = urand(1000, 3000);
+        _defeatedTimer      = 0;
+        _resetThreatTimer   = urand(5000, 15000);
+        _defeated           = false;
+
+        me->SetStandState(UNIT_STAND_STATE_STAND);
+        me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
+    }
+
+    void JustEngagedWith(Unit* who) override
+    {
+        if (_instance)
+        {
+            if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+                _instance->SetBossState(BOSS_GRAND_CHAMPIONS, IN_PROGRESS);
+
+            _instance->DoSetChamptionsInCombat(who);
+        }
+    }
+
+    void JustReachedHome() override
+    {
+        if (_instance)
+        {
+            if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+                _instance->SetBossState(BOSS_GRAND_CHAMPIONS, FAIL);
+        }
+    }
+
+    void AttackStart(Unit* who) override
+    {
+        ScriptedAI::AttackStart(who);
+
+        // Set mount in combat if we're on a vehicle
+        if (Vehicle* vehicle = me->GetVehicle())
+            if (Unit* base = vehicle->GetBase())
+                if (Creature* mount = base->ToCreature())
+                    mount->AI()->AttackStart(who);
+    }
+
+    void MoveInLineOfSight(Unit* who) override
+    {
+        if (me->HasUnitFlag(UNIT_FLAG_IMMUNE_TO_PC))
             return;
 
-    for (Map::PlayerList::const_iterator i = PlList.begin(); i != PlList.end(); ++i)
-    {
-        if (Player* player = i->GetSource())
-        {
-            if (player->IsGameMaster())
-                continue;
+        ScriptedAI::MoveInLineOfSight(who);
+    }
 
-            if (player->IsAlive())
+    void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType /*damageType*/, SpellInfo const* /*spellInfo*/) override
+    {
+        if (damage >= me->GetHealth())
+        {
+            damage = 0;
+
+            if (_defeated)
+                return;
+
+            if (!_instance)
+                return;
+
+            // Ground phase (arena challenge complete)
+            if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
             {
-                temp->RemoveUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
-                temp->SetImmuneToPC(true);
-                temp->SetReactState(REACT_AGGRESSIVE);
-                temp->EngageWithTarget(player);
+                me->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
+                me->InterruptNonMeleeSpells(false);
+                me->SetStandState(UNIT_STAND_STATE_KNEEL);
+                me->SetHealth(1);
+
+                me->SetReactState(REACT_PASSIVE);
+                me->GetMotionMaster()->Clear();
+                me->GetMotionMaster()->MoveIdle();
+
+                if (_instance->IsArenaChallengeComplete(BOSS_GRAND_CHAMPIONS))
+                    _instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
+            }
+            // Mounted arena phase
+            else
+            {
+                // Dismount from vehicle
+                if (Vehicle* vehicle = me->GetVehicle())
+                {
+                    if (Unit* base = vehicle->GetBase())
+                    {
+                        me->ExitVehicle();
+                        if (Creature* mount = base->ToCreature())
+                            mount->DespawnOrUnsummon();
+                    }
+                }
+
+                me->SetStandState(UNIT_STAND_STATE_DEAD);
+                me->SetHealth(1);
+
+                me->SetReactState(REACT_PASSIVE);
+                me->GetMotionMaster()->Clear();
+                me->GetMotionMaster()->MoveIdle();
+
+                _defeatedTimer = 15000;
+            }
+
+            _defeated = true;
+        }
+    }
+
+    void MovementInform(uint32 type, uint32 pointId) override
+    {
+        if (type != POINT_MOTION_TYPE || !_instance)
+            return;
+
+        switch (pointId)
+        {
+            case POINT_ID_MOUNT:
+            {
+                uint32 mountEntry = _instance->GetMountEntryForChampion();
+
+                Creature* pMount = ObjectAccessor::GetCreature(*me, _newMountGuid);
+                if (!pMount || pMount->HasAura(SPELL_RIDE_ARGENT_VEHICLE))
+                    pMount = me->FindNearestCreature(mountEntry, 60.0f);
+
+                if (!pMount)
+                    return;
+
+                DoCast(pMount, SPELL_RIDE_ARGENT_VEHICLE, true);
+
+                if (me->GetVictim())
+                    if (Creature* mountCreature = pMount->ToCreature())
+                        mountCreature->AI()->AttackStart(me->GetVictim());
+
+                _defeated = false;
+                me->SetReactState(REACT_AGGRESSIVE);
+                break;
+            }
+            case POINT_ID_EXIT:
+                if (_instance->GetBossState(BOSS_GRAND_CHAMPIONS) != DONE)
+                    _instance->SetData(DATA_ARENA_CHALLENGE, DONE);
+
+                me->DespawnOrUnsummon();
+                break;
+        }
+    }
+
+    void DoUseNearbyMountIfCan()
+    {
+        if (!_instance)
+            return;
+
+        if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
+            _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
+        else
+        {
+            me->SetStandState(UNIT_STAND_STATE_STAND);
+
+            uint32 mountEntry = _instance->GetMountEntryForChampion();
+
+            if (Creature* pMount = me->FindNearestCreature(mountEntry, 60.0f))
+            {
+                float fX, fY, fZ;
+                pMount->GetContactPoint(me, fX, fY, fZ);
+                me->SetWalk(true);
+                me->GetMotionMaster()->Clear();
+                me->GetMotionMaster()->MovePoint(POINT_ID_MOUNT, fX, fY, fZ);
+                _newMountGuid = pMount->GetGUID();
             }
         }
     }
-}
 
-bool GrandChampionsOutVehicle(Creature* me)
-{
-    InstanceScript* instance = me->GetInstanceScript();
+    // Override in class-specific AIs
+    virtual bool UpdateChampionAI(uint32 /*diff*/) { return true; }
 
-    if (!instance)
-        return false;
-
-    Creature* pGrandChampion1 = ObjectAccessor::GetCreature(*me, instance->GetGuidData(DATA_GRAND_CHAMPION_1));
-    Creature* pGrandChampion2 = ObjectAccessor::GetCreature(*me, instance->GetGuidData(DATA_GRAND_CHAMPION_2));
-    Creature* pGrandChampion3 = ObjectAccessor::GetCreature(*me, instance->GetGuidData(DATA_GRAND_CHAMPION_3));
-
-    if (pGrandChampion1 && pGrandChampion2 && pGrandChampion3)
+    void UpdateAI(uint32 diff) override
     {
-        if (!pGrandChampion1->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT) &&
-            !pGrandChampion2->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT) &&
-            !pGrandChampion3->HasUnitMovementFlag(MOVEMENTFLAG_ONTRANSPORT))
-            return true;
+        if (!UpdateVictim())
+            return;
+
+        // Remount timer after being dismounted
+        if (_defeatedTimer)
+        {
+            if (_defeatedTimer <= diff)
+            {
+                DoUseNearbyMountIfCan();
+                _defeatedTimer = 0;
+            }
+            else
+                _defeatedTimer -= diff;
+        }
+
+        if (_defeated)
+            return;
+
+        if (!_instance)
+            return;
+
+        // Arena phase - mounted combat
+        if (_instance->GetData(DATA_ARENA_CHALLENGE) == IN_PROGRESS)
+        {
+            if (_shieldBreakerTimer <= diff)
+            {
+                if (me->GetVictim())
+                    DoCast(me->GetVictim(), SPELL_SHIELD_BREAKER);
+                _shieldBreakerTimer = urand(2000, 4000);
+            }
+            else
+                _shieldBreakerTimer -= diff;
+
+            if (_chargeTimer)
+            {
+                if (_chargeTimer <= diff)
+                {
+                    if (me->GetVictim())
+                    {
+                        DoCast(me->GetVictim(), SPELL_CHARGE);
+
+                        // Signal mount to charge
+                        if (Vehicle* vehicle = me->GetVehicle())
+                            if (Unit* base = vehicle->GetBase())
+                                if (Creature* mount = base->ToCreature())
+                                    mount->AI()->DoAction(ACTION_CHARGE_VEHICLE);
+
+                        _chargeTimer = 0;
+                    }
+                }
+                else
+                    _chargeTimer -= diff;
+            }
+        }
+        // Ground phase
+        else if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+        {
+            if (!UpdateChampionAI(diff))
+                return;
+
+            // Random target switch
+            if (_resetThreatTimer <= diff)
+            {
+                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 1))
+                {
+                    ResetThreatList();
+                    AttackStart(target);
+                    _resetThreatTimer = urand(5000, 15000);
+                }
+            }
+            else
+                _resetThreatTimer -= diff;
+
+            DoMeleeAttackIfReady();
+        }
     }
+};
 
-    return false;
-}
+// ===== Warrior Champion =====
 
-/*
-* Generic AI for vehicles used by npcs in ToC, it needs more improvements.  *
-* Script Complete: 25%.                                                     *
-*/
+enum WarriorSpells
+{
+    SPELL_INTERCEPT         = 67540,
+    SPELL_BLADESTORM        = 67541,
+    SPELL_MORTAL_STRIKE     = 67542,
+    SPELL_ROLLING_THROW     = 67546,
+};
 
-class generic_vehicleAI_toc5 : public CreatureScript
+class boss_champion_warrior : public CreatureScript
 {
 public:
-    generic_vehicleAI_toc5() : CreatureScript("generic_vehicleAI_toc5") { }
+    boss_champion_warrior() : CreatureScript("boss_champion_warrior") { }
 
-    struct generic_vehicleAI_toc5AI : public EscortAI
+    struct boss_champion_warriorAI : public trial_companion_commonAI
     {
-        generic_vehicleAI_toc5AI(Creature* creature) : EscortAI(creature)
-        {
-            Initialize();
-            SetDespawnAtEnd(false);
-            uiWaypointPath = 0;
+        boss_champion_warriorAI(Creature* creature) : trial_companion_commonAI(creature) { Reset(); }
 
-            instance = creature->GetInstanceScript();
-        }
-
-        void Initialize()
-        {
-            uiChargeTimer = 5000;
-            uiShieldBreakerTimer = 8000;
-            uiBuffTimer = urand(30000, 60000);
-        }
-
-        InstanceScript* instance;
-
-        uint32 uiChargeTimer;
-        uint32 uiShieldBreakerTimer;
-        uint32 uiBuffTimer;
-
-        uint32 uiWaypointPath;
+        uint32 _strikeTimer;
+        uint32 _bladestormTimer;
+        uint32 _interceptTimer;
+        uint32 _throwTimer;
 
         void Reset() override
         {
-            Initialize();
+            _interceptTimer     = 0;
+            _strikeTimer        = urand(5000, 8000);
+            _bladestormTimer    = urand(10000, 20000);
+            _throwTimer         = 30000;
+
+            trial_companion_commonAI::Reset();
         }
 
-        void SetData(uint32 uiType, uint32 /*uiData*/) override
+        bool UpdateChampionAI(uint32 diff) override
         {
-            switch (uiType)
+            if (_interceptTimer <= diff)
             {
-                case 1:
-                    AddWaypoint(0, 747.36f, 634.07f, 411.572f, true);
-                    AddWaypoint(1, 780.43f, 607.15f, 411.82f, true);
-                    AddWaypoint(2, 785.99f, 599.41f, 411.92f, true);
-                    AddWaypoint(3, 778.44f, 601.64f, 411.79f, true);
-                    uiWaypointPath = 1;
-                    break;
-                case 2:
-                    AddWaypoint(0, 747.35f, 634.07f, 411.57f, true);
-                    AddWaypoint(1, 768.72f, 581.01f, 411.92f, true);
-                    AddWaypoint(2, 763.55f, 590.52f, 411.71f, true);
-                    uiWaypointPath = 2;
-                    break;
-                case 3:
-                    AddWaypoint(0, 747.35f, 634.07f, 411.57f, true);
-                    AddWaypoint(1, 784.02f, 645.33f, 412.39f, true);
-                    AddWaypoint(2, 775.67f, 641.91f, 411.91f, true);
-                    uiWaypointPath = 3;
-                    break;
+                if (!SelectTarget(SelectTargetMethod::Random, 0, 5.0f))
+                {
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 30.0f, true))
+                    {
+                        DoCast(target, SPELL_INTERCEPT);
+                        _interceptTimer = 10000;
+                    }
+                }
+                else
+                    _interceptTimer = 2000;
+            }
+            else
+                _interceptTimer -= diff;
+
+            if (_bladestormTimer <= diff)
+            {
+                DoCast(me, SPELL_BLADESTORM);
+                _bladestormTimer = urand(15000, 20000);
+            }
+            else
+                _bladestormTimer -= diff;
+
+            if (_throwTimer <= diff)
+            {
+                if (me->GetVictim())
+                    me->GetVictim()->CastSpell(me->GetVictim(), SPELL_ROLLING_THROW, true);
+                _throwTimer = urand(20000, 30000);
+            }
+            else
+                _throwTimer -= diff;
+
+            if (_strikeTimer <= diff)
+            {
+                DoCastVictim(SPELL_MORTAL_STRIKE);
+                _strikeTimer = urand(8000, 12000);
+            }
+            else
+                _strikeTimer -= diff;
+
+            return true;
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<boss_champion_warriorAI>(creature);
+    }
+};
+
+// ===== Mage Champion =====
+
+enum MageSpells
+{
+    SPELL_FIREBALL      = 66042,
+    SPELL_POLYMORPH     = 66043,
+    SPELL_BLAST_WAVE    = 66044,
+    SPELL_HASTE         = 66045,
+};
+
+class boss_champion_mage : public CreatureScript
+{
+public:
+    boss_champion_mage() : CreatureScript("boss_champion_mage") { }
+
+    struct boss_champion_mageAI : public trial_companion_commonAI
+    {
+        boss_champion_mageAI(Creature* creature) : trial_companion_commonAI(creature) { Reset(); }
+
+        uint32 _fireballTimer;
+        uint32 _blastWaveTimer;
+        uint32 _hasteTimer;
+        uint32 _polymorphTimer;
+
+        void Reset() override
+        {
+            _fireballTimer      = 0;
+            _blastWaveTimer     = urand(10000, 20000);
+            _hasteTimer         = 10000;
+            _polymorphTimer     = urand(5000, 10000);
+
+            trial_companion_commonAI::Reset();
+        }
+
+        void AttackStart(Unit* who) override
+        {
+            if (_instance && _instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+                SetCombatMovement(true);
+
+            trial_companion_commonAI::AttackStart(who);
+        }
+
+        bool UpdateChampionAI(uint32 diff) override
+        {
+            if (_fireballTimer <= diff)
+            {
+                DoCastVictim(SPELL_FIREBALL);
+                _fireballTimer = urand(2000, 4000);
+            }
+            else
+                _fireballTimer -= diff;
+
+            if (_blastWaveTimer <= diff)
+            {
+                if (SelectTarget(SelectTargetMethod::Random, 0, 8.0f))
+                {
+                    DoCast(me, SPELL_BLAST_WAVE);
+                    _blastWaveTimer = urand(10000, 20000);
+                }
+                else
+                    _blastWaveTimer = 5000;
+            }
+            else
+                _blastWaveTimer -= diff;
+
+            if (_hasteTimer <= diff)
+            {
+                DoCast(me, SPELL_HASTE);
+                _hasteTimer = 20000;
+            }
+            else
+                _hasteTimer -= diff;
+
+            if (_polymorphTimer <= diff)
+            {
+                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                {
+                    DoCast(target, SPELL_POLYMORPH);
+                    _polymorphTimer = urand(5000, 10000);
+                }
+            }
+            else
+                _polymorphTimer -= diff;
+
+            return true;
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<boss_champion_mageAI>(creature);
+    }
+};
+
+// ===== Shaman Champion =====
+
+enum ShamanSpells
+{
+    SPELL_HEALING_WAVE      = 67528,
+    SPELL_CHAIN_LIGHTNING   = 67529,
+    SPELL_EARTH_SHIELD      = 67530,
+    SPELL_HEX_OF_MENDING   = 67534,
+};
+
+class boss_champion_shaman : public CreatureScript
+{
+public:
+    boss_champion_shaman() : CreatureScript("boss_champion_shaman") { }
+
+    struct boss_champion_shamanAI : public trial_companion_commonAI
+    {
+        boss_champion_shamanAI(Creature* creature) : trial_companion_commonAI(creature) { Reset(); }
+
+        uint32 _healingWaveTimer;
+        uint32 _lightningTimer;
+        uint32 _earthShieldTimer;
+        uint32 _hexTimer;
+
+        void Reset() override
+        {
+            _lightningTimer     = 1000;
+            _healingWaveTimer   = 13000;
+            _hexTimer           = 10000;
+            _earthShieldTimer   = 0;
+
+            trial_companion_commonAI::Reset();
+        }
+
+        bool UpdateChampionAI(uint32 diff) override
+        {
+            if (_lightningTimer <= diff)
+            {
+                DoCast(me, SPELL_CHAIN_LIGHTNING);
+                _lightningTimer = urand(1000, 3000);
+            }
+            else
+                _lightningTimer -= diff;
+
+            if (_healingWaveTimer <= diff)
+            {
+                if (Unit* target = DoSelectLowestHpFriendly(40.0f))
+                {
+                    DoCast(target, SPELL_HEALING_WAVE);
+                    _healingWaveTimer = urand(8000, 13000);
+                }
+            }
+            else
+                _healingWaveTimer -= diff;
+
+            if (_earthShieldTimer <= diff)
+            {
+                if (!me->HasAura(SPELL_EARTH_SHIELD))
+                {
+                    DoCast(me, SPELL_EARTH_SHIELD);
+                    _earthShieldTimer = 30000;
+                }
+                else
+                    _earthShieldTimer = 5000;
+            }
+            else
+                _earthShieldTimer -= diff;
+
+            if (_hexTimer <= diff)
+            {
+                DoCastVictim(SPELL_HEX_OF_MENDING);
+                _hexTimer = urand(17000, 25000);
+            }
+            else
+                _hexTimer -= diff;
+
+            return true;
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<boss_champion_shamanAI>(creature);
+    }
+};
+
+// ===== Hunter Champion =====
+
+enum HunterSpells
+{
+    SPELL_DISENGAGE             = 68340,
+    SPELL_LIGHTNING_ARROWS      = 66083,
+    SPELL_LIGHTNING_ARROWS_PROC = 66085,
+    SPELL_MULTI_SHOT            = 66081,
+    SPELL_SHOOT                 = 65868,
+};
+
+class boss_champion_hunter : public CreatureScript
+{
+public:
+    boss_champion_hunter() : CreatureScript("boss_champion_hunter") { }
+
+    struct boss_champion_hunterAI : public trial_companion_commonAI
+    {
+        boss_champion_hunterAI(Creature* creature) : trial_companion_commonAI(creature) { Reset(); }
+
+        uint32 _disengageTimer;
+        uint32 _arrowsTimer;
+        uint32 _arrowsProcTimer;
+        uint32 _multiShotTimer;
+        uint32 _shootTimer;
+
+        void Reset() override
+        {
+            _shootTimer         = 1000;
+            _arrowsTimer        = urand(10000, 15000);
+            _arrowsProcTimer    = 0;
+            _multiShotTimer     = urand(6000, 12000);
+            _disengageTimer     = 5000;
+
+            trial_companion_commonAI::Reset();
+        }
+
+        void AttackStart(Unit* who) override
+        {
+            if (_instance && _instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+                SetCombatMovement(true);
+
+            trial_companion_commonAI::AttackStart(who);
+        }
+
+        bool UpdateChampionAI(uint32 diff) override
+        {
+            if (_shootTimer <= diff)
+            {
+                DoCastVictim(SPELL_SHOOT);
+                _shootTimer = urand(1000, 3000);
+            }
+            else
+                _shootTimer -= diff;
+
+            if (_multiShotTimer <= diff)
+            {
+                DoCastVictim(SPELL_MULTI_SHOT);
+                _multiShotTimer = urand(5000, 10000);
+            }
+            else
+                _multiShotTimer -= diff;
+
+            if (_disengageTimer <= diff)
+            {
+                if (SelectTarget(SelectTargetMethod::Random, 0, 8.0f))
+                {
+                    DoCast(me, SPELL_DISENGAGE);
+                    _disengageTimer = urand(13000, 18000);
+                }
+                else
+                    _disengageTimer = 5000;
+            }
+            else
+                _disengageTimer -= diff;
+
+            if (_arrowsTimer <= diff)
+            {
+                DoCast(me, SPELL_LIGHTNING_ARROWS);
+                _arrowsTimer = urand(23000, 27000);
+                _arrowsProcTimer = 3000;
+            }
+            else
+                _arrowsTimer -= diff;
+
+            if (_arrowsProcTimer)
+            {
+                if (_arrowsProcTimer <= diff)
+                {
+                    DoCast(me, SPELL_LIGHTNING_ARROWS_PROC);
+                    _arrowsProcTimer = 0;
+                }
+                else
+                    _arrowsProcTimer -= diff;
             }
 
-            if (uiType <= 3)
-                Start(false);
+            return true;
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<boss_champion_hunterAI>(creature);
+    }
+};
+
+// ===== Rogue Champion =====
+
+enum RogueSpells
+{
+    SPELL_POISON_BOTTLE     = 67701,
+    SPELL_FAN_OF_KNIVES     = 67706,
+    SPELL_EVISCERATE        = 67709,
+    SPELL_DEADLY_POISON     = 67710,
+};
+
+class boss_champion_rogue : public CreatureScript
+{
+public:
+    boss_champion_rogue() : CreatureScript("boss_champion_rogue") { }
+
+    struct boss_champion_rogueAI : public trial_companion_commonAI
+    {
+        boss_champion_rogueAI(Creature* creature) : trial_companion_commonAI(creature) { Reset(); }
+
+        uint32 _poisonBottleTimer;
+        uint32 _fanKnivesTimer;
+        uint32 _eviscerateTimer;
+        uint32 _deadlyPoisonTimer;
+
+        void Reset() override
+        {
+            _deadlyPoisonTimer  = 12000;
+            _eviscerateTimer    = 7000;
+            _fanKnivesTimer     = 10000;
+            _poisonBottleTimer  = 5000;
+
+            trial_companion_commonAI::Reset();
         }
 
-        void WaypointReached(uint32 waypointId, uint32 /*pathId*/) override
+        bool UpdateChampionAI(uint32 diff) override
         {
-            switch (waypointId)
+            if (_poisonBottleTimer <= diff)
             {
-                case 2:
-                    if (uiWaypointPath == 3 || uiWaypointPath == 2)
-                        instance->SetData(DATA_MOVEMENT_DONE, instance->GetData(DATA_MOVEMENT_DONE)+1);
-                    break;
-                case 3:
-                    instance->SetData(DATA_MOVEMENT_DONE, instance->GetData(DATA_MOVEMENT_DONE)+1);
-                    break;
+                DoCast(me, SPELL_POISON_BOTTLE);
+                _poisonBottleTimer = urand(15000, 20000);
             }
+            else
+                _poisonBottleTimer -= diff;
+
+            if (_deadlyPoisonTimer <= diff)
+            {
+                DoCastVictim(SPELL_DEADLY_POISON);
+                _deadlyPoisonTimer = urand(9000, 15000);
+            }
+            else
+                _deadlyPoisonTimer -= diff;
+
+            if (_eviscerateTimer <= diff)
+            {
+                DoCastVictim(SPELL_EVISCERATE);
+                _eviscerateTimer = 8000;
+            }
+            else
+                _eviscerateTimer -= diff;
+
+            if (_fanKnivesTimer <= diff)
+            {
+                DoCast(me, SPELL_FAN_OF_KNIVES);
+                _fanKnivesTimer = urand(10000, 15000);
+            }
+            else
+                _fanKnivesTimer -= diff;
+
+            return true;
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<boss_champion_rogueAI>(creature);
+    }
+};
+
+// ===== npc_trial_grand_champion - Phase 2 mount replacement AI =====
+
+enum GrandChampionSpells
+{
+    SPELL_CHAMPION_CHARGE   = 63010,
+    SPELL_CHAMPION_DEFEND   = 64100,
+};
+
+class npc_trial_grand_champion : public CreatureScript
+{
+public:
+    npc_trial_grand_champion() : CreatureScript("npc_trial_grand_champion") { }
+
+    struct npc_trial_grand_championAI : public ScriptedAI
+    {
+        npc_trial_grand_championAI(Creature* creature) : ScriptedAI(creature)
+        {
+            _instance = creature->GetInstanceScript();
         }
 
-        void JustEngagedWith(Unit* /*who*/) override
+        InstanceScript* _instance;
+
+        uint32 _chargeTimer;
+        uint32 _blockTimer;
+        uint32 _chargeResetTimer;
+
+        void Reset() override
         {
-            DoCastSpellShield();
+            _chargeTimer        = 1000;
+            _blockTimer         = 0;
+            _chargeResetTimer   = 0;
         }
 
-        void DoCastSpellShield()
+        void UpdateAI(uint32 diff) override
         {
-            for (uint8 i = 0; i < 3; ++i)
-                DoCast(me, SPELL_SHIELD, true);
-        }
-
-        void UpdateAI(uint32 uiDiff) override
-        {
-            EscortAI::UpdateAI(uiDiff);
-
             if (!UpdateVictim())
                 return;
 
-            if (uiBuffTimer <= uiDiff)
+            if (_blockTimer <= diff)
             {
-                if (!me->HasAura(SPELL_SHIELD))
-                    DoCastSpellShield();
-
-                uiBuffTimer = urand(30000, 45000);
-            }else uiBuffTimer -= uiDiff;
-
-            if (uiChargeTimer <= uiDiff)
-            {
-                Map::PlayerList const& players = me->GetMap()->GetPlayers();
-                if (!players.isEmpty())
+                if (!me->HasAura(SPELL_CHAMPION_DEFEND))
                 {
-                    for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-                    {
-                        Player* player = itr->GetSource();
-                        if (player && !player->IsGameMaster() && me->IsInRange(player, 8.0f, 25.0f, false))
-                        {
-                            ResetThreatList();
-                            AddThreat(player, 1.0f);
-                            DoCast(player, SPELL_CHARGE);
-                            break;
-                        }
-                    }
-                }
-                uiChargeTimer = 5000;
-            }else uiChargeTimer -= uiDiff;
-
-            //dosen't work at all
-            if (uiShieldBreakerTimer <= uiDiff)
-            {
-                Vehicle* pVehicle = me->GetVehicleKit();
-                if (!pVehicle)
-                    return;
-
-                if (Unit* pPassenger = pVehicle->GetPassenger(SEAT_ID_0))
-                {
-                    Map::PlayerList const& players = me->GetMap()->GetPlayers();
-                    if (!players.isEmpty())
-                    {
-                        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-                        {
-                            Player* player = itr->GetSource();
-                            if (player && !player->IsGameMaster() && me->IsInRange(player, 10.0f, 30.0f, false))
-                            {
-                                pPassenger->CastSpell(player, SPELL_SHIELD_BREAKER, true);
-                                break;
-                            }
-                        }
-                    }
-                }
-                uiShieldBreakerTimer = 7000;
-            }else uiShieldBreakerTimer -= uiDiff;
-
-            DoMeleeAttackIfReady();
-        }
-    };
-
-    CreatureAI* GetAI(Creature* creature) const override
-    {
-        return GetTrialOfTheChampionAI<generic_vehicleAI_toc5AI>(creature);
-    }
-};
-
-class boss_warrior_toc5 : public CreatureScript
-{
-public:
-    boss_warrior_toc5() : CreatureScript("boss_warrior_toc5") { }
-
-    // Marshal Jacob Alerius && Mokra the Skullcrusher || Warrior
-    struct boss_warrior_toc5AI : public ScriptedAI
-    {
-        boss_warrior_toc5AI(Creature* creature) : ScriptedAI(creature)
-        {
-            Initialize();
-            instance = creature->GetInstanceScript();
-
-            bDone = false;
-            bHome = false;
-
-            uiPhase = 0;
-            uiPhaseTimer = 0;
-
-            me->SetReactState(REACT_PASSIVE);
-            // THIS IS A HACK, SHOULD BE REMOVED WHEN THE EVENT IS FULL SCRIPTED
-            me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
-            me->SetImmuneToPC(true);
-        }
-
-        void Initialize()
-        {
-            uiBladeStormTimer = urand(15000, 20000);
-            uiInterceptTimer = 7000;
-            uiMortalStrikeTimer = urand(8000, 12000);
-        }
-
-        InstanceScript* instance;
-
-        uint8 uiPhase;
-        uint32 uiPhaseTimer;
-
-        uint32 uiBladeStormTimer;
-        uint32 uiInterceptTimer;
-        uint32 uiMortalStrikeTimer;
-
-        bool bDone;
-        bool bHome;
-
-        void Reset() override
-        {
-            Initialize();
-        }
-
-        void JustReachedHome() override
-        {
-            ScriptedAI::JustReachedHome();
-
-            if (!bHome)
-                return;
-
-            uiPhaseTimer = 15000;
-            uiPhase = 1;
-
-            bHome = false;
-        }
-
-        void UpdateAI(uint32 uiDiff) override
-        {
-            if (!bDone && GrandChampionsOutVehicle(me))
-            {
-                bDone = true;
-
-                if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_1))
-                    me->SetHomePosition(739.678f, 662.541f, 412.393f, 4.49f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_2))
-                    me->SetHomePosition(746.71f, 661.02f, 411.69f, 4.6f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_3))
-                    me->SetHomePosition(754.34f, 660.70f, 412.39f, 4.79f);
-
-                EnterEvadeMode();
-                bHome = true;
-            }
-
-            if (uiPhaseTimer <= uiDiff)
-            {
-                if (uiPhase == 1)
-                {
-                    AggroAllPlayers(me);
-                    uiPhase = 0;
-                }
-            }else uiPhaseTimer -= uiDiff;
-
-            if (!UpdateVictim() || !me->m_movementInfo.transport.guid.IsEmpty())
-                return;
-
-            if (uiInterceptTimer <= uiDiff)
-            {
-                Map::PlayerList const& players = me->GetMap()->GetPlayers();
-                if (!players.isEmpty())
-                {
-                    for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-                    {
-                        Player* player = itr->GetSource();
-                        if (player && !player->IsGameMaster() && me->IsInRange(player, 8.0f, 25.0f, false))
-                        {
-                            ResetThreatList();
-                            AddThreat(player, 5.0f);
-                            DoCast(player, SPELL_INTERCEPT);
-                            break;
-                        }
-                    }
-                }
-                uiInterceptTimer = 7000;
-            } else uiInterceptTimer -= uiDiff;
-
-            if (uiBladeStormTimer <= uiDiff)
-            {
-                DoCastVictim(SPELL_BLADESTORM);
-                uiBladeStormTimer = urand(15000, 20000);
-            } else uiBladeStormTimer -= uiDiff;
-
-            if (uiMortalStrikeTimer <= uiDiff)
-            {
-                DoCastVictim(SPELL_MORTAL_STRIKE);
-                uiMortalStrikeTimer = urand(8000, 12000);
-            } else uiMortalStrikeTimer -= uiDiff;
-
-            DoMeleeAttackIfReady();
-        }
-
-        void JustDied(Unit* /*killer*/) override
-        {
-            instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
-        }
-    };
-
-    CreatureAI* GetAI(Creature* creature) const override
-    {
-        return GetTrialOfTheChampionAI<boss_warrior_toc5AI>(creature);
-    }
-};
-
-class boss_mage_toc5 : public CreatureScript
-{
-public:
-    boss_mage_toc5() : CreatureScript("boss_mage_toc5") { }
-
-    // Ambrose Boltspark && Eressea Dawnsinger || Mage
-    struct boss_mage_toc5AI : public ScriptedAI
-    {
-        boss_mage_toc5AI(Creature* creature) : ScriptedAI(creature)
-        {
-            Initialize();
-            instance = creature->GetInstanceScript();
-
-            bDone = false;
-            bHome = false;
-
-            uiPhase = 0;
-            uiPhaseTimer = 0;
-
-            me->SetReactState(REACT_PASSIVE);
-            // THIS IS A HACK, SHOULD BE REMOVED WHEN THE EVENT IS FULL SCRIPTED
-            me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
-            me->SetImmuneToPC(true);
-        }
-
-        void Initialize()
-        {
-            uiFireBallTimer = 5000;
-            uiPolymorphTimer = 8000;
-            uiBlastWaveTimer = 12000;
-            uiHasteTimer = 22000;
-        }
-
-        InstanceScript* instance;
-
-        uint8 uiPhase;
-        uint32 uiPhaseTimer;
-
-        uint32 uiFireBallTimer;
-        uint32 uiBlastWaveTimer;
-        uint32 uiHasteTimer;
-        uint32 uiPolymorphTimer;
-
-        bool bDone;
-        bool bHome;
-
-        void Reset() override
-        {
-            Initialize();
-        }
-
-        void JustReachedHome() override
-        {
-            ScriptedAI::JustReachedHome();
-
-            if (!bHome)
-                return;
-
-            uiPhaseTimer = 15000;
-            uiPhase = 1;
-
-            bHome = false;
-        }
-
-        void UpdateAI(uint32 uiDiff) override
-        {
-            if (!bDone && GrandChampionsOutVehicle(me))
-            {
-                bDone = true;
-
-                if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_1))
-                    me->SetHomePosition(739.678f, 662.541f, 412.393f, 4.49f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_2))
-                    me->SetHomePosition(746.71f, 661.02f, 411.69f, 4.6f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_3))
-                    me->SetHomePosition(754.34f, 660.70f, 412.39f, 4.79f);
-
-                instance->SetBossState(BOSS_GRAND_CHAMPIONS, IN_PROGRESS);
-
-                EnterEvadeMode();
-                bHome = true;
-            }
-
-            if (uiPhaseTimer <= uiDiff)
-            {
-                if (uiPhase == 1)
-                {
-                    AggroAllPlayers(me);
-                    uiPhase = 0;
-                }
-            }else uiPhaseTimer -= uiDiff;
-
-            if (uiFireBallTimer <= uiDiff)
-            {
-                if (me->GetVictim())
-                    DoCastVictim(SPELL_FIREBALL);
-                uiFireBallTimer = 5000;
-            } else uiFireBallTimer -= uiDiff;
-
-            if (!UpdateVictim() || !me->m_movementInfo.transport.guid.IsEmpty())
-                return;
-
-            if (uiFireBallTimer <= uiDiff)
-            {
-                DoCastVictim(SPELL_FIREBALL);
-                uiFireBallTimer = 5000;
-            } else uiFireBallTimer -= uiDiff;
-
-            if (uiPolymorphTimer <= uiDiff)
-            {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
-                    DoCast(target, SPELL_POLYMORPH);
-                uiPolymorphTimer = 8000;
-            } else uiPolymorphTimer -= uiDiff;
-
-            if (uiBlastWaveTimer <= uiDiff)
-            {
-                DoCastAOE(SPELL_BLAST_WAVE, false);
-                uiBlastWaveTimer = 13000;
-            } else uiBlastWaveTimer -= uiDiff;
-
-            if (uiHasteTimer <= uiDiff)
-            {
-                me->InterruptNonMeleeSpells(true);
-
-                DoCast(me, SPELL_HASTE);
-                uiHasteTimer = 22000;
-            } else uiHasteTimer -= uiDiff;
-
-            DoMeleeAttackIfReady();
-        }
-
-        void JustDied(Unit* /*killer*/) override
-        {
-            instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
-        }
-    };
-
-    CreatureAI* GetAI(Creature* creature) const override
-    {
-        return GetTrialOfTheChampionAI<boss_mage_toc5AI>(creature);
-    }
-};
-
-class boss_shaman_toc5 : public CreatureScript
-{
-public:
-    boss_shaman_toc5() : CreatureScript("boss_shaman_toc5") { }
-
-    // Colosos && Runok Wildmane || Shaman
-    struct boss_shaman_toc5AI : public ScriptedAI
-    {
-        boss_shaman_toc5AI(Creature* creature) : ScriptedAI(creature)
-        {
-            Initialize();
-            instance = creature->GetInstanceScript();
-
-            bDone = false;
-            bHome = false;
-
-            uiPhase = 0;
-            uiPhaseTimer = 0;
-
-            me->SetReactState(REACT_PASSIVE);
-            // THIS IS A HACK, SHOULD BE REMOVED WHEN THE EVENT IS FULL SCRIPTED
-            me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
-            me->SetImmuneToPC(true);
-        }
-
-        void Initialize()
-        {
-            uiChainLightningTimer = 16000;
-            uiHealingWaveTimer = 12000;
-            uiEartShieldTimer = urand(30000, 35000);
-            uiHexMendingTimer = urand(20000, 25000);
-        }
-
-        InstanceScript* instance;
-
-        uint8 uiPhase;
-        uint32 uiPhaseTimer;
-
-        uint32 uiChainLightningTimer;
-        uint32 uiEartShieldTimer;
-        uint32 uiHealingWaveTimer;
-        uint32 uiHexMendingTimer;
-
-        bool bDone;
-        bool bHome;
-
-        void Reset() override
-        {
-            Initialize();
-        }
-
-        void JustEngagedWith(Unit* who) override
-        {
-            DoCast(me, SPELL_EARTH_SHIELD);
-            DoCast(who, SPELL_HEX_OF_MENDING);
-        };
-
-        void JustReachedHome() override
-        {
-            ScriptedAI::JustReachedHome();
-
-            if (!bHome)
-                return;
-
-            uiPhaseTimer = 15000;
-            uiPhase = 1;
-
-            bHome = false;
-        }
-
-        void UpdateAI(uint32 uiDiff) override
-        {
-            if (!bDone && GrandChampionsOutVehicle(me))
-            {
-                bDone = true;
-
-                if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_1))
-                    me->SetHomePosition(739.678f, 662.541f, 412.393f, 4.49f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_2))
-                    me->SetHomePosition(746.71f, 661.02f, 411.69f, 4.6f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_3))
-                    me->SetHomePosition(754.34f, 660.70f, 412.39f, 4.79f);
-
-                instance->SetBossState(BOSS_GRAND_CHAMPIONS, IN_PROGRESS);
-
-                EnterEvadeMode();
-                bHome = true;
-            }
-
-            if (uiPhaseTimer <= uiDiff)
-            {
-                if (uiPhase == 1)
-                {
-                    AggroAllPlayers(me);
-                    uiPhase = 0;
-                }
-            }else uiPhaseTimer -= uiDiff;
-
-            if (!UpdateVictim() || !me->m_movementInfo.transport.guid.IsEmpty())
-                return;
-
-            if (uiChainLightningTimer <= uiDiff)
-            {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
-                    DoCast(target, SPELL_CHAIN_LIGHTNING);
-
-                uiChainLightningTimer = 16000;
-            } else uiChainLightningTimer -= uiDiff;
-
-            if (uiHealingWaveTimer <= uiDiff)
-            {
-                bool bChance = roll_chance_i(50);
-
-                if (!bChance)
-                {
-                    if (Unit* pFriend = DoSelectLowestHpFriendly(40))
-                        DoCast(pFriend, SPELL_HEALING_WAVE);
-                } else
-                    DoCast(me, SPELL_HEALING_WAVE);
-
-                uiHealingWaveTimer = 12000;
-            } else uiHealingWaveTimer -= uiDiff;
-
-            if (uiEartShieldTimer <= uiDiff)
-            {
-                DoCast(me, SPELL_EARTH_SHIELD);
-
-                uiEartShieldTimer = urand(30000, 35000);
-            } else uiEartShieldTimer -= uiDiff;
-
-            if (uiHexMendingTimer <= uiDiff)
-            {
-                DoCastVictim(SPELL_HEX_OF_MENDING, true);
-
-                uiHexMendingTimer = urand(20000, 25000);
-            } else uiHexMendingTimer -= uiDiff;
-
-            DoMeleeAttackIfReady();
-        }
-
-        void JustDied(Unit* /*killer*/) override
-        {
-            instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
-        }
-    };
-
-    CreatureAI* GetAI(Creature* creature) const override
-    {
-        return GetTrialOfTheChampionAI<boss_shaman_toc5AI>(creature);
-    }
-};
-
-class boss_hunter_toc5 : public CreatureScript
-{
-public:
-    boss_hunter_toc5() : CreatureScript("boss_hunter_toc5") { }
-
-        // Jaelyne Evensong && Zul'tore || Hunter
-    struct boss_hunter_toc5AI : public ScriptedAI
-    {
-        boss_hunter_toc5AI(Creature* creature) : ScriptedAI(creature)
-        {
-            Initialize();
-            instance = creature->GetInstanceScript();
-
-            bDone = false;
-            bHome = false;
-
-            uiPhase = 0;
-            uiPhaseTimer = 0;
-
-            me->SetReactState(REACT_PASSIVE);
-            // THIS IS A HACK, SHOULD BE REMOVED WHEN THE EVENT IS FULL SCRIPTED
-            me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
-            me->SetImmuneToPC(true);
-        }
-
-        void Initialize()
-        {
-            uiShootTimer = 12000;
-            uiMultiShotTimer = 0;
-            uiLightningArrowsTimer = 7000;
-
-            uiTargetGUID.Clear();
-
-            bShoot = false;
-        }
-
-        InstanceScript* instance;
-
-        uint8 uiPhase;
-        uint32 uiPhaseTimer;
-
-        uint32 uiShootTimer;
-        uint32 uiMultiShotTimer;
-        uint32 uiLightningArrowsTimer;
-
-        ObjectGuid uiTargetGUID;
-
-        bool bShoot;
-        bool bDone;
-        bool bHome;
-
-        void Reset() override
-        {
-            Initialize();
-        }
-
-        void JustReachedHome() override
-        {
-            ScriptedAI::JustReachedHome();
-
-            if (!bHome)
-                return;
-
-            uiPhaseTimer = 15000;
-            uiPhase = 1;
-
-            bHome = false;
-        }
-
-        void UpdateAI(uint32 uiDiff) override
-        {
-            if (!bDone && GrandChampionsOutVehicle(me))
-            {
-                bDone = true;
-
-                if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_1))
-                    me->SetHomePosition(739.678f, 662.541f, 412.393f, 4.49f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_2))
-                    me->SetHomePosition(746.71f, 661.02f, 411.69f, 4.6f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_3))
-                    me->SetHomePosition(754.34f, 660.70f, 412.39f, 4.79f);
-
-                instance->SetBossState(BOSS_GRAND_CHAMPIONS, IN_PROGRESS);
-
-                EnterEvadeMode();
-                bHome = true;
-            }
-
-            if (uiPhaseTimer <= uiDiff)
-            {
-                if (uiPhase == 1)
-                {
-                    AggroAllPlayers(me);
-                    uiPhase = 0;
-                }
-            }else uiPhaseTimer -= uiDiff;
-
-            if (!UpdateVictim() || !me->m_movementInfo.transport.guid.IsEmpty())
-                return;
-
-            if (uiLightningArrowsTimer <= uiDiff)
-            {
-                DoCastAOE(SPELL_LIGHTNING_ARROWS, false);
-                uiLightningArrowsTimer = 7000;
-            } else uiLightningArrowsTimer -= uiDiff;
-
-            if (uiShootTimer <= uiDiff)
-            {
-                if (Unit* target = SelectTarget(SelectTargetMethod::MaxDistance, 0, 30.0f))
-                {
-                    uiTargetGUID = target->GetGUID();
-                    DoCast(target, SPELL_SHOOT);
-                }
-                uiShootTimer = 12000;
-                uiMultiShotTimer = 3000;
-                bShoot = true;
-            } else uiShootTimer -= uiDiff;
-
-            if (bShoot && uiMultiShotTimer <= uiDiff)
-            {
-                me->InterruptNonMeleeSpells(true);
-                Unit* target = ObjectAccessor::GetUnit(*me, uiTargetGUID);
-
-                if (target && me->IsInRange(target, 5.0f, 30.0f, false))
-                {
-                    DoCast(target, SPELL_MULTI_SHOT);
+                    DoCast(me, SPELL_CHAMPION_DEFEND);
+                    _blockTimer = 7000;
                 }
                 else
+                    _blockTimer = 2000;
+            }
+            else
+                _blockTimer -= diff;
+
+            if (_chargeTimer)
+            {
+                if (_chargeTimer <= diff)
                 {
-                    Map::PlayerList const& players = me->GetMap()->GetPlayers();
-                    if (!players.isEmpty())
-                    {
-                        for (Map::PlayerList::const_iterator itr = players.begin(); itr != players.end(); ++itr)
-                        {
-                            Player* player = itr->GetSource();
-                            if (player && !player->IsGameMaster() && me->IsInRange(player, 5.0f, 30.0f, false))
-                            {
-                                DoCast(player, SPELL_MULTI_SHOT);
-                                break;
-                            }
-                        }
-                    }
+                    DoCastVictim(SPELL_CHAMPION_CHARGE);
+                    _chargeResetTimer = urand(5000, 10000);
+                    _chargeTimer = 0;
                 }
-                bShoot = false;
-            } else uiMultiShotTimer -= uiDiff;
+                else
+                    _chargeTimer -= diff;
+            }
+
+            if (_chargeResetTimer)
+            {
+                if (_chargeResetTimer <= diff)
+                {
+                    _chargeResetTimer = 0;
+                    _chargeTimer = urand(2000, 4000);
+                }
+                else
+                    _chargeResetTimer -= diff;
+            }
 
             DoMeleeAttackIfReady();
-        }
-
-        void JustDied(Unit* /*killer*/) override
-        {
-            instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
         }
     };
 
     CreatureAI* GetAI(Creature* creature) const override
     {
-        return GetTrialOfTheChampionAI<boss_hunter_toc5AI>(creature);
+        return GetTrialOfTheChampionAI<npc_trial_grand_championAI>(creature);
     }
 };
 
-class boss_rouge_toc5 : public CreatureScript
+// ===== npc_champion_mount - Vehicle AI for intro mount =====
+
+class npc_champion_mount : public CreatureScript
 {
 public:
-    boss_rouge_toc5() : CreatureScript("boss_rouge_toc5") { }
+    npc_champion_mount() : CreatureScript("npc_champion_mount") { }
 
-    // Lana Stouthammer Evensong && Deathstalker Visceri || Rouge
-    struct boss_rouge_toc5AI : public ScriptedAI
+    struct npc_champion_mountAI : public ScriptedAI
     {
-        boss_rouge_toc5AI(Creature* creature) : ScriptedAI(creature)
+        npc_champion_mountAI(Creature* creature) : ScriptedAI(creature)
         {
-            Initialize();
-            instance = creature->GetInstanceScript();
-
-            bDone = false;
-            bHome = false;
-
-            uiPhase = 0;
-            uiPhaseTimer = 0;
-
-            me->SetReactState(REACT_PASSIVE);
-            // THIS IS A HACK, SHOULD BE REMOVED WHEN THE EVENT IS FULL SCRIPTED
-            me->SetUnitFlag(UNIT_FLAG_NON_ATTACKABLE);
-            me->SetImmuneToPC(true);
+            _instance = static_cast<instance_trial_of_the_champion_InstanceMapScript*>(creature->GetInstanceScript());
         }
 
-        void Initialize()
-        {
-            uiEviscerateTimer = 8000;
-            uiFanKivesTimer = 14000;
-            uiPosionBottleTimer = 19000;
-        }
+        instance_trial_of_the_champion_InstanceMapScript* _instance;
 
-        InstanceScript* instance;
-
-        uint8 uiPhase;
-        uint32 uiPhaseTimer;
-        uint32 uiEviscerateTimer;
-        uint32 uiFanKivesTimer;
-        uint32 uiPosionBottleTimer;
-
-        bool bDone;
-        bool bHome;
+        uint32 _chargeResetTimer;
 
         void Reset() override
         {
-            Initialize();
+            _chargeResetTimer = 0;
         }
 
-        void JustReachedHome() override
-        {
-            ScriptedAI::JustReachedHome();
+        void MoveInLineOfSight(Unit* /*who*/) override { }
 
-            if (!bHome)
+        void MovementInform(uint32 type, uint32 pointId) override
+        {
+            if (type != POINT_MOTION_TYPE || !_instance)
                 return;
 
-            uiPhaseTimer = 15000;
-            uiPhase = 1;
-
-            bHome = false;
-        }
-
-        void UpdateAI(uint32 uiDiff) override
-        {
-            if (!bDone && GrandChampionsOutVehicle(me))
+            switch (pointId)
             {
-                bDone = true;
-
-                if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_1))
-                    me->SetHomePosition(739.678f, 662.541f, 412.393f, 4.49f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_2))
-                    me->SetHomePosition(746.71f, 661.02f, 411.69f, 4.6f);
-                else if (me->GetGUID() == instance->GetGuidData(DATA_GRAND_CHAMPION_3))
-                    me->SetHomePosition(754.34f, 660.70f, 412.39f, 4.79f);
-
-                instance->SetBossState(BOSS_GRAND_CHAMPIONS, IN_PROGRESS);
-
-                EnterEvadeMode();
-                bHome = true;
+                case POINT_ID_CENTER:
+                    _instance->MoveChampionToHome(me);
+                    break;
+                case POINT_ID_HOME:
+                    if (Creature* pTrigger = me->FindNearestCreature(NPC_WORLD_TRIGGER, 200.0f))
+                    {
+                        me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), me->GetAbsoluteAngle(pTrigger));
+                        me->SetFacingToObject(pTrigger);
+                    }
+                    _instance->InformChampionReachHome();
+                    break;
             }
-
-            if (uiPhaseTimer <= uiDiff)
-            {
-                if (uiPhase == 1)
-                {
-                    AggroAllPlayers(me);
-                    uiPhase = 0;
-                }
-            } else uiPhaseTimer -= uiDiff;
-
-            if (!UpdateVictim() || !me->m_movementInfo.transport.guid.IsEmpty())
-                return;
-
-            if (uiEviscerateTimer <= uiDiff)
-            {
-                DoCastVictim(SPELL_EVISCERATE);
-                uiEviscerateTimer = 8000;
-            } else uiEviscerateTimer -= uiDiff;
-
-            if (uiFanKivesTimer <= uiDiff)
-            {
-                DoCastAOE(SPELL_FAN_OF_KNIVES, false);
-                uiFanKivesTimer = 14000;
-            } else uiFanKivesTimer -= uiDiff;
-
-            if (uiPosionBottleTimer <= uiDiff)
-            {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
-                    DoCast(target, SPELL_POISON_BOTTLE);
-                uiPosionBottleTimer = 19000;
-            } else uiPosionBottleTimer -= uiDiff;
-
-            DoMeleeAttackIfReady();
         }
 
-        void JustDied(Unit* /*killer*/) override
+        void DoAction(int32 action) override
         {
-            instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
+            if (action == ACTION_CHARGE_VEHICLE)
+            {
+                if (me->GetVictim())
+                {
+                    DoCast(me->GetVictim(), SPELL_CHARGE_VEHICLE, true);
+                    _chargeResetTimer = urand(5000, 10000);
+                }
+            }
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (!UpdateVictim())
+                return;
+
+            if (_chargeResetTimer)
+            {
+                if (_chargeResetTimer <= diff)
+                {
+                    // Inform rider that charge cooldown is done
+                    if (Vehicle* vehicle = me->GetVehicleKit())
+                        if (Unit* passenger = vehicle->GetPassenger(0))
+                            if (Creature* rider = passenger->ToCreature())
+                                rider->AI()->DoAction(ACTION_CHARGE_DONE);
+
+                    _chargeResetTimer = 0;
+                }
+                else
+                    _chargeResetTimer -= diff;
+            }
         }
     };
 
     CreatureAI* GetAI(Creature* creature) const override
     {
-        return GetTrialOfTheChampionAI<boss_rouge_toc5AI>(creature);
+        return GetTrialOfTheChampionAI<npc_champion_mountAI>(creature);
     }
 };
 
 void AddSC_boss_grand_champions()
 {
-    new generic_vehicleAI_toc5();
-    new boss_warrior_toc5();
-    new boss_mage_toc5();
-    new boss_shaman_toc5();
-    new boss_hunter_toc5();
-    new boss_rouge_toc5();
+    new boss_champion_warrior();
+    new boss_champion_mage();
+    new boss_champion_shaman();
+    new boss_champion_hunter();
+    new boss_champion_rogue();
+    new npc_trial_grand_champion();
+    new npc_champion_mount();
 }
