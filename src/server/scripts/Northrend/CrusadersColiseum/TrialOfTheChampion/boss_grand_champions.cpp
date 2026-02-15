@@ -935,6 +935,78 @@ public:
     }
 };
 
+// ===== npc_toc5_player_vehicle - Player mount vehicle (removes Defend on dismount) =====
+
+enum PlayerDefendSpells
+{
+    SPELL_DEFEND_AURA_1     = 62552,
+    SPELL_DEFEND_AURA_2     = 62719,
+    SPELL_DEFEND_AURA_3     = 64192,
+};
+
+class npc_toc5_player_vehicle : public CreatureScript
+{
+public:
+    npc_toc5_player_vehicle() : CreatureScript("npc_toc5_player_vehicle") { }
+
+    struct npc_toc5_player_vehicleAI : public ScriptedAI
+    {
+        npc_toc5_player_vehicleAI(Creature* creature) : ScriptedAI(creature)
+        {
+            _playerGuid = ObjectGuid::Empty;
+        }
+
+        ObjectGuid _playerGuid;
+
+        void AttackStart(Unit* /*who*/) override { }
+        void MoveInLineOfSight(Unit* /*who*/) override { }
+
+        void UpdateAI(uint32 /*diff*/) override
+        {
+            if (_playerGuid.IsEmpty())
+                return;
+
+            // Check if vehicle still has a passenger
+            Vehicle* vehicle = me->GetVehicleKit();
+            if (vehicle && vehicle->GetPassenger(0))
+                return;
+
+            // Player left - remove defend auras from player and vehicle
+            if (Player* player = ObjectAccessor::GetPlayer(*me, _playerGuid))
+            {
+                player->RemoveAurasDueToSpell(SPELL_DEFEND_DUMMY);
+                player->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_1);
+                player->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_2);
+                player->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_3);
+                player->RemoveAurasDueToSpell(63130);
+                player->RemoveAurasDueToSpell(63131);
+                player->RemoveAurasDueToSpell(63132);
+            }
+
+            me->RemoveAurasDueToSpell(SPELL_DEFEND_DUMMY);
+            me->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_1);
+            me->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_2);
+            me->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_3);
+            me->RemoveAurasDueToSpell(63130);
+            me->RemoveAurasDueToSpell(63131);
+            me->RemoveAurasDueToSpell(63132);
+
+            _playerGuid = ObjectGuid::Empty;
+        }
+
+        void PassengerBoarded(Unit* who, int8 /*seatId*/, bool apply) override
+        {
+            if (apply && who && who->GetTypeId() == TYPEID_PLAYER)
+                _playerGuid = who->GetGUID();
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<npc_toc5_player_vehicleAI>(creature);
+    }
+};
+
 void AddSC_boss_grand_champions()
 {
     new boss_champion_warrior();
@@ -944,4 +1016,5 @@ void AddSC_boss_grand_champions()
     new boss_champion_rogue();
     new npc_trial_grand_champion();
     new npc_champion_mount();
+    new npc_toc5_player_vehicle();
 }

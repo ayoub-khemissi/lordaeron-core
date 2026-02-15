@@ -26,6 +26,7 @@
 #include "Player.h"
 #include "TemporarySummon.h"
 #include "Containers.h"
+#include "Vehicle.h"
 #include "trial_of_the_champion.h"
 
 // ===== Dialogue Events (EventMap IDs) =====
@@ -820,16 +821,22 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
 
                     float angle = pTrigger->GetAbsoluteAngle(pCenterTrigger);
 
-                    if (Creature* pChampion = pHerald->SummonCreature(champData->uiEntry,
+                    if (Creature* pMount = pHerald->SummonCreature(champData->uiMount,
                         pTrigger->GetPositionX(), pTrigger->GetPositionY(), pTrigger->GetPositionZ(), angle, TEMPSUMMON_DEAD_DESPAWN, 0s))
                     {
-                        if (Creature* pMount = pChampion->SummonCreature(champData->uiMount,
-                            pTrigger->GetPositionX(), pTrigger->GetPositionY(), pTrigger->GetPositionZ(), angle, TEMPSUMMON_DEAD_DESPAWN, 0s))
+                        // Champion is auto-spawned as passenger by vehicle_template_accessory
+                        if (Vehicle* vehicle = pMount->GetVehicleKit())
                         {
-                            pChampion->CastSpell(pMount, SPELL_RIDE_VEHICLE_HARDCODED, true);
-                            m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
-                            m_ArenaMountsGuids[m_uiIntroStage] = pMount->GetGUID();
+                            if (Unit* passenger = vehicle->GetPassenger(0))
+                            {
+                                if (Creature* pChampion = passenger->ToCreature())
+                                {
+                                    pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                                    m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
+                                }
+                            }
                         }
+                        m_ArenaMountsGuids[m_uiIntroStage] = pMount->GetGUID();
 
                         // Summon helper champions
                         float fX, fY, fZ;
@@ -859,12 +866,25 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                         HandleGameObject(gateItr->second, true);
                     m_events.ScheduleEvent(EVENT_GATE_RESET, 10s);
 
-                    if (Creature* pChampion = pHerald->SummonCreature(champData->uiEntry,
+                    if (Creature* pMount = pHerald->SummonCreature(champData->uiMount,
                         aIntroPositions[0][0], aIntroPositions[0][1], aIntroPositions[0][2], aIntroPositions[0][3], TEMPSUMMON_DEAD_DESPAWN, 0s))
                     {
+                        // Champion is auto-spawned as passenger by vehicle_template_accessory
+                        Creature* pChampion = nullptr;
+                        if (Vehicle* vehicle = pMount->GetVehicleKit())
+                            if (Unit* passenger = vehicle->GetPassenger(0))
+                                pChampion = passenger->ToCreature();
+
+                        if (pChampion)
+                        {
+                            pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                            m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
+                        }
+                        m_ArenaMountsGuids[m_uiIntroStage] = pMount->GetGUID();
+
                         // Herald announces champion
                         pHerald->AI()->Talk(champData->uiHeraldTalkGroup);
-                        pHerald->SetFacingToObject(pChampion);
+                        pHerald->SetFacingToObject(pMount);
 
                         switch (m_uiIntroStage)
                         {
@@ -873,30 +893,20 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                             case 2: pHerald->CastSpell(pHerald, SPELL_ARGENT_SUMMON_CHAMPION_3, true); break;
                         }
 
-                        // Summon champion mount
-                        if (Creature* pMount = pChampion->SummonCreature(champData->uiMount,
-                            aIntroPositions[0][0], aIntroPositions[0][1], aIntroPositions[0][2], aIntroPositions[0][3], TEMPSUMMON_DEAD_DESPAWN, 0s))
+                        pMount->SetWalk(false);
+                        pCenterTrigger->GetClosePoint(fX, fY, fZ, pMount->GetCombatReach(), 2 * INTERACTION_DISTANCE,
+                            pCenterTrigger->GetAbsoluteAngle(pMount));
+                        pMount->GetMotionMaster()->MovePoint(POINT_ID_CENTER, fX, fY, fZ);
+
+                        // Summon helper champions following mount
+                        for (uint8 j = 0; j < 3; ++j)
                         {
-                            pChampion->CastSpell(pMount, SPELL_RIDE_VEHICLE_HARDCODED, true);
-
-                            pMount->SetWalk(false);
-                            pCenterTrigger->GetClosePoint(fX, fY, fZ, pChampion->GetCombatReach(), 2 * INTERACTION_DISTANCE,
-                                pCenterTrigger->GetAbsoluteAngle(pMount));
-                            pMount->GetMotionMaster()->MovePoint(POINT_ID_CENTER, fX, fY, fZ);
-
-                            m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
-                            m_ArenaMountsGuids[m_uiIntroStage] = pMount->GetGUID();
-
-                            // Summon helper champions following mount
-                            for (uint8 j = 0; j < 3; ++j)
+                            if (Creature* pHelper = pHerald->SummonCreature(champData->uiChampion,
+                                aIntroPositions[j + 1][0], aIntroPositions[j + 1][1], aIntroPositions[j + 1][2], aIntroPositions[j + 1][3],
+                                TEMPSUMMON_DEAD_DESPAWN, 0s))
                             {
-                                if (Creature* pHelper = pChampion->SummonCreature(champData->uiChampion,
-                                    aIntroPositions[j + 1][0], aIntroPositions[j + 1][1], aIntroPositions[j + 1][2], aIntroPositions[j + 1][3],
-                                    TEMPSUMMON_DEAD_DESPAWN, 0s))
-                                {
-                                    pHelper->GetMotionMaster()->MoveFollow(pMount, pHelper->GetDistance(pMount), float(M_PI) / 2 + pHelper->GetAbsoluteAngle(pMount));
-                                    m_sArenaHelpersGuids[m_uiIntroStage].insert(pHelper->GetGUID());
-                                }
+                                pHelper->GetMotionMaster()->MoveFollow(pMount, pHelper->GetDistance(pMount), float(M_PI) / 2 + pHelper->GetAbsoluteAngle(pMount));
+                                m_sArenaHelpersGuids[m_uiIntroStage].insert(pHelper->GetGUID());
                             }
                         }
                     }
