@@ -986,7 +986,10 @@ class spell_gen_clone_weapon_aura : public AuraScript
                 if (Player* player = caster->ToPlayer())
                 {
                     if (Item* mainItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND))
-                        target->SetVirtualItem(0, mainItem->GetEntry());
+                    {
+                        uint32 transmogEntry = player->GetSlotTransmog(EQUIPMENT_SLOT_MAINHAND).transmogEntry;
+                        target->SetVirtualItem(0, transmogEntry ? transmogEntry : mainItem->GetEntry());
+                    }
                 }
                 else
                     target->SetVirtualItem(0, caster->GetVirtualItemId(0));
@@ -1000,7 +1003,10 @@ class spell_gen_clone_weapon_aura : public AuraScript
                 if (Player* player = caster->ToPlayer())
                 {
                     if (Item* offItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND))
-                        target->SetVirtualItem(1, offItem->GetEntry());
+                    {
+                        uint32 transmogEntry = player->GetSlotTransmog(EQUIPMENT_SLOT_OFFHAND).transmogEntry;
+                        target->SetVirtualItem(1, transmogEntry ? transmogEntry : offItem->GetEntry());
+                    }
                 }
                 else
                     target->SetVirtualItem(1, caster->GetVirtualItemId(1));
@@ -1013,7 +1019,10 @@ class spell_gen_clone_weapon_aura : public AuraScript
                 if (Player* player = caster->ToPlayer())
                 {
                     if (Item* rangedItem = player->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_RANGED))
-                        target->SetVirtualItem(2, rangedItem->GetEntry());
+                    {
+                        uint32 transmogEntry = player->GetSlotTransmog(EQUIPMENT_SLOT_RANGED).transmogEntry;
+                        target->SetVirtualItem(2, transmogEntry ? transmogEntry : rangedItem->GetEntry());
+                    }
                 }
                 else
                     target->SetVirtualItem(2, caster->GetVirtualItemId(2));

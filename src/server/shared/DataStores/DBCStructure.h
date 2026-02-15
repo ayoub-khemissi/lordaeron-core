@@ -878,7 +878,6 @@ struct ItemBagFamilyEntry
     //uint32 Name_lang_mask;                                // 17
 };
 
-/*
 struct ItemDisplayInfoEntry
 {
     uint32 ID;                                              // 0
@@ -894,7 +893,6 @@ struct ItemDisplayInfoEntry
     int32 ItemVisual;                                       // 23
     uint32 ParticleColorID;                                 // 24
 };
-*/
 
 /*
 struct ItemCondExtCostsEntry

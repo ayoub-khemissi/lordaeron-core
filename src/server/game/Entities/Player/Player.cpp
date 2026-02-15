@@ -15,6 +15,7 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "Transmogrification.h"
 #include "Player.h"
 #include "AccountMgr.h"
 #include "AchievementMgr.h"
@@ -4063,6 +4064,14 @@ void Player::DeleteFromDB(ObjectGuid playerguid, uint32 accountId, bool updateRe
             }
 
             stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CHARACTER);
+            stmt->setUInt32(0, guid);
+            trans->Append(stmt);
+
+            stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_TRANSMOG_SETS);
+            stmt->setUInt32(0, guid);
+            trans->Append(stmt);
+
+            stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_SLOT_TRANSMOG);
             stmt->setUInt32(0, guid);
             trans->Append(stmt);
 
@@ -12051,6 +12060,7 @@ Item* Player::StoreNewItem(ItemPosCountVec const& dest, uint32 item, bool update
             stmt->setString(1, ss.str());
             CharacterDatabase.Execute(stmt);
         }
+        Transmogrification::instance().AddToCollection(this, pItem);
     }
     return pItem;
 }
@@ -12090,6 +12100,8 @@ Item* Player::_StoreItem(uint16 pos, Item* pItem, uint32 count, bool clone, bool
 
     TC_LOG_DEBUG("entities.player.items", "Player::_StoreItem: Player '{}' ({}), Bag: {}, Slot: {}, Item: {} ({}), Count: {}",
         GetName(), GetGUID().ToString(), bag, slot, pItem->GetEntry(), pItem->GetGUID().ToString(), count);
+
+    Transmogrification::instance().AddToCollection(this, pItem);
 
     Item* pItem2 = GetItemByPos(bag, slot);
 
@@ -12190,6 +12202,7 @@ Item* Player::EquipNewItem(uint16 pos, uint32 item, bool update)
     if (Item* pItem = Item::CreateItem(item, 1, this))
     {
         UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_RECEIVE_EPIC_ITEM, item, 1);
+        Transmogrification::instance().AddToCollection(this, pItem);
         Item* equippedItem = EquipItem(pos, pItem, update);
         ItemAddedQuestCheck(item, 1);
         return equippedItem;
@@ -12336,8 +12349,27 @@ void Player::SetVisibleItemSlot(uint8 slot, Item* pItem)
 {
     if (pItem)
     {
-        SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), pItem->GetEntry());
-        SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));
+        // Slot-based transmog: check player's slot data first
+        if (uint32 entry = m_slotTransmog[slot].transmogEntry)
+        {
+            if (entry == InvisibleEntry)
+                entry = 0;
+            else if (entry == NormalEntry)
+                entry = pItem->GetEntry();
+            SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), entry);
+        }
+        else
+            SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + (slot * 2), pItem->GetEntry());
+        if (uint32 entry = m_slotTransmog[slot].enchantEntry)
+        {
+            if (entry == InvisibleEntry)
+                entry = 0;
+            else if (entry == NormalEntry)
+                entry = pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, entry);
+        }
+        else
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 0, pItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));
         SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (slot * 2), 1, pItem->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT));
     }
     else
@@ -12505,6 +12537,7 @@ void Player::MoveItemToInventory(ItemPosCountVec const& dest, Item* pItem, bool 
     // update quest counters
     ItemAddedQuestCheck(itemId, count);
     UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_RECEIVE_EPIC_ITEM, itemId, count);
+    Transmogrification::instance().AddToCollection(this, pLastItem);
 }
 
 void Player::DestroyItem(uint8 bag, uint8 slot, bool update)
@@ -14167,7 +14200,19 @@ void Player::ApplyEnchantment(Item* item, EnchantmentSlot slot, bool apply, bool
 
     // visualize enchantment at player and equipped items
     if (slot == PERM_ENCHANTMENT_SLOT)
-        SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 0, apply ? item->GetEnchantmentId(slot) : 0);
+    {
+        uint32 entry = m_slotTransmog[item->GetSlot()].enchantEntry;
+        if (apply && entry)
+        {
+            if (entry == InvisibleEntry)
+                entry = 0;
+            else if (entry == NormalEntry)
+                entry = item->GetEnchantmentId(PERM_ENCHANTMENT_SLOT);
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 0, entry);
+        }
+        else
+            SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 0, apply ? item->GetEnchantmentId(slot) : 0);
+    }
 
     if (slot == TEMP_ENCHANTMENT_SLOT)
         SetUInt16Value(PLAYER_VISIBLE_ITEM_1_ENCHANTMENT + (item->GetSlot() * 2), 1, apply ? item->GetEnchantmentId(slot) : 0);
@@ -15284,6 +15329,9 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
                 }
                 else if (quest->IsDFQuest())
                     SendItemRetrievalMail(itemId, quest->RewardItemIdCount[i]);
+                if (quest->RewardItemIdCount[i]) {
+                    Transmogrification::instance().AddToCollection(this, sObjectMgr->GetItemTemplate(quest->RewardItemId[i]));
+                }
             }
         }
     }
@@ -15297,6 +15345,11 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
             {
                 Item* item = StoreNewItem(dest, itemId, true, GenerateItemRandomPropertyId(itemId));
                 SendNewItem(item, quest->RewardChoiceItemCount[reward], true, false, false, false);
+            }
+        }
+        for (uint32 choiceReward = 0; choiceReward < quest->GetRewChoiceItemsCount(); ++choiceReward) {
+            if (quest->RewardChoiceItemCount[choiceReward]) {
+                Transmogrification::instance().AddToCollection(this, sObjectMgr->GetItemTemplate(quest->RewardChoiceItemId[choiceReward]));
             }
         }
     }
@@ -17923,6 +17976,76 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     // must be before inventory (some items required reputation check)
     m_reputationMgr->LoadFromDB(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_REPUTATION));
 
+    // Load transmogrification data BEFORE inventory so visuals are applied correctly
+    if (auto result = holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_TRANSMOG))
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            uint32 type = fields[0].GetUInt32();
+            uint32 entry = fields[1].GetUInt32();
+            switch (type)
+            {
+            case TRANSMOG_TYPE_ITEM:
+            case TRANSMOG_TYPE_ENCHANT:
+                break;
+            default:
+                TC_LOG_ERROR("custom.transmog", "Account {} has transmog with unknown type {} in custom_account_transmog, ignoring", GetSession()->GetAccountId(), type);
+                continue;
+            }
+            transmogrification_appearances[type].insert(entry);
+        } while (result->NextRow());
+    }
+
+    if (auto result = holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_TRANSMOG_SETS))
+    {
+        do
+        {
+            Field* field = result->Fetch();
+            uint8 PresetID = field[0].GetUInt8();
+            std::string SetName = field[1].GetString();
+            std::istringstream SetData(field[2].GetString());
+
+            presetMap[PresetID].name = SetName;
+
+            uint32 slot;
+            uint32 entry;
+            uint32 type;
+            while (SetData >> slot >> entry >> type)
+            {
+                if (slot >= EQUIPMENT_SLOT_END)
+                {
+                    TC_LOG_ERROR("custom.transmog", "Set has invalid slot {} (Owner: {}, PresetID: {}), ignoring.", slot, GetGUID().GetCounter(), uint32(PresetID));
+                    continue;
+                }
+                switch (type)
+                {
+                case TRANSMOG_TYPE_ITEM:
+                    if (!sObjectMgr->GetItemTemplate(entry))
+                    {
+                        TC_LOG_ERROR("custom.transmog", "Set has invalid item entry {} (Owner: {}, PresetID: {}), ignoring.", entry, GetGUID().GetCounter(), uint32(PresetID));
+                        continue;
+                    }
+                    break;
+                case TRANSMOG_TYPE_ENCHANT:
+                    if (!sSpellItemEnchantmentStore.LookupEntry(entry))
+                    {
+                        TC_LOG_ERROR("custom.transmog", "Set has invalid enchant entry {} (Owner: {}, PresetID: {}), ignoring.", entry, GetGUID().GetCounter(), uint32(PresetID));
+                        continue;
+                    }
+                    break;
+                default:
+                    TC_LOG_ERROR("custom.transmog", "Set has invalid transmog type {} (Owner: {}, PresetID: {}), ignoring.", type, GetGUID().GetCounter(), uint32(PresetID));
+                    continue;
+                }
+                presetMap[PresetID].data.push_back(std::make_tuple(static_cast<uint8>(slot), static_cast<uint32>(entry), static_cast<AppearanceType>(type)));
+            }
+        } while (result->NextRow());
+    }
+
+    // Load slot-based transmog data
+    LoadSlotTransmogFromDB(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_SLOT_TRANSMOG));
+
     _LoadInventory(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_INVENTORY), time_diff);
 
     // update items with duration and realtime
@@ -19707,6 +19830,28 @@ void Player::SaveToDB(CharacterDatabaseTransaction trans, bool create /* = false
     }
 
     trans->Append(stmt);
+
+    // Save slot-based transmog data
+    SaveSlotTransmogToDB(trans);
+
+    // Save transmog presets
+    stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_TRANSMOG_SETS);
+    stmt->setUInt32(0, GetGUID().GetCounter());
+    trans->Append(stmt);
+    for (auto&& it : presetMap)
+    {
+        if (it.second.data.empty())
+            continue;
+        std::ostringstream ss;
+        for (auto const & v : it.second.data)
+            ss << static_cast<uint32>(std::get<uint8>(v)) << ' ' << std::get<uint32>(v) << ' ' << static_cast<uint32>(std::get<AppearanceType>(v)) << ' ';
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_TRANSMOG_SETS);
+        stmt->setUInt32(0, GetGUID().GetCounter());
+        stmt->setUInt8(1, it.first);
+        stmt->setString(2, it.second.name);
+        stmt->setString(3, ss.str());
+        trans->Append(stmt);
+    }
 
     if (m_fishingSteps != 0)
     {
@@ -27051,6 +27196,92 @@ std::string Player::GetDebugInfo() const
     std::stringstream sstr;
     sstr << Unit::GetDebugInfo();
     return sstr.str();
+}
+
+void Player::SetSlotTransmog(uint8 slot, uint32 transmogEntry, uint32 enchantEntry)
+{
+    if (slot >= EQUIPMENT_SLOT_END)
+        return;
+    m_slotTransmog[slot].transmogEntry = transmogEntry;
+    m_slotTransmog[slot].enchantEntry = enchantEntry;
+}
+
+void Player::ClearSlotTransmog(uint8 slot)
+{
+    if (slot >= EQUIPMENT_SLOT_END)
+        return;
+    m_slotTransmog[slot].transmogEntry = 0;
+    m_slotTransmog[slot].enchantEntry = 0;
+}
+
+void Player::ClearAllSlotTransmogs()
+{
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+        ClearSlotTransmog(slot);
+}
+
+void Player::SaveSlotTransmogToDB(CharacterDatabaseTransaction trans)
+{
+    auto stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_SLOT_TRANSMOG);
+    stmt->setUInt32(0, GetGUID().GetCounter());
+    trans->Append(stmt);
+
+    for (uint8 slot = EQUIPMENT_SLOT_START; slot < EQUIPMENT_SLOT_END; ++slot)
+    {
+        if (m_slotTransmog[slot].transmogEntry || m_slotTransmog[slot].enchantEntry)
+        {
+            stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_SLOT_TRANSMOG);
+            stmt->setUInt32(0, GetGUID().GetCounter());
+            stmt->setUInt8(1, slot);
+            stmt->setUInt32(2, m_slotTransmog[slot].transmogEntry);
+            stmt->setUInt32(3, m_slotTransmog[slot].enchantEntry);
+            trans->Append(stmt);
+        }
+    }
+}
+
+void Player::LoadSlotTransmogFromDB(PreparedQueryResult result)
+{
+    ClearAllSlotTransmogs();
+    if (!result)
+        return;
+
+    do
+    {
+        Field* fields = result->Fetch();
+        uint8 slot = fields[0].GetUInt8();
+        uint32 transmogEntry = fields[1].GetUInt32();
+        uint32 enchantEntry = fields[2].GetUInt32();
+
+        if (slot >= EQUIPMENT_SLOT_END)
+        {
+            TC_LOG_ERROR("custom.transmog", "Player {} has slot transmog with invalid slot {} in custom_character_slot_transmog, ignoring", GetGUID().GetCounter(), slot);
+            continue;
+        }
+
+        // Validate transmog entry
+        if (transmogEntry && transmogEntry != InvisibleEntry && transmogEntry != NormalEntry)
+        {
+            if (!sObjectMgr->GetItemTemplate(transmogEntry))
+            {
+                TC_LOG_ERROR("custom.transmog", "Player {} has slot transmog with invalid item entry {} for slot {}, ignoring", GetGUID().GetCounter(), transmogEntry, slot);
+                transmogEntry = 0;
+            }
+        }
+
+        // Validate enchant entry
+        if (enchantEntry && enchantEntry != InvisibleEntry && enchantEntry != NormalEntry)
+        {
+            if (!sSpellItemEnchantmentStore.LookupEntry(enchantEntry))
+            {
+                TC_LOG_ERROR("custom.transmog", "Player {} has slot transmog with invalid enchant entry {} for slot {}, ignoring", GetGUID().GetCounter(), enchantEntry, slot);
+                enchantEntry = 0;
+            }
+        }
+
+        m_slotTransmog[slot].transmogEntry = transmogEntry;
+        m_slotTransmog[slot].enchantEntry = enchantEntry;
+    } while (result->NextRow());
 }
 
 GameClient* Player::GetGameClient() const

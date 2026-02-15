@@ -34,6 +34,16 @@ void CharacterDatabaseConnection::DoPrepareStatements()
     PrepareStatement(CHAR_INS_CHARACTER_BAN, "INSERT INTO character_banned (guid, bandate, unbandate, bannedby, banreason, active) VALUES (?, UNIX_TIMESTAMP(), UNIX_TIMESTAMP()+?, ?, ?, 1)", CONNECTION_ASYNC);
     PrepareStatement(CHAR_UPD_CHARACTER_BAN, "UPDATE character_banned SET active = 0 WHERE guid = ? AND active != 0", CONNECTION_ASYNC);
     PrepareStatement(CHAR_DEL_CHARACTER_BAN, "DELETE cb FROM character_banned cb INNER JOIN characters c ON c.guid = cb.guid WHERE c.account = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_DEL_ACCOUNT_TRANSMOG, "DELETE FROM custom_account_transmog WHERE accountid = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_SEL_ACCOUNT_TRANSMOG, "SELECT `type`, entry FROM custom_account_transmog WHERE accountid = ? ORDER BY entry", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_INS_ACCOUNT_TRANSMOG, "INSERT INTO custom_account_transmog (`accountid`, `type`, `entry`) VALUES (?, ?, ?)", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_DEL_TRANSMOG_SETS, "DELETE FROM `custom_transmogrification_sets` WHERE owner = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_SEL_TRANSMOG_SETS, "SELECT `presetid`, `setname`, `setdata` FROM `custom_transmogrification_sets` WHERE owner = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_REP_TRANSMOG_SETS, "REPLACE INTO `custom_transmogrification_sets` (`owner`, `presetid`, `setname`, `setdata`) VALUES (?, ?, ?, ?)", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_SEL_SLOT_TRANSMOG, "SELECT `slot`, `transmog_entry`, `enchant_entry` FROM `custom_character_slot_transmog` WHERE guid = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_DEL_SLOT_TRANSMOG, "DELETE FROM `custom_character_slot_transmog` WHERE guid = ?", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_REP_SLOT_TRANSMOG, "REPLACE INTO `custom_character_slot_transmog` (`guid`, `slot`, `transmog_entry`, `enchant_entry`) VALUES (?, ?, ?, ?)", CONNECTION_ASYNC);
+    PrepareStatement(CHAR_DEL_SLOT_TRANSMOG_SINGLE, "DELETE FROM `custom_character_slot_transmog` WHERE guid = ? AND slot = ?", CONNECTION_ASYNC);
     PrepareStatement(CHAR_SEL_BANINFO, "SELECT bandate, unbandate-bandate, active, unbandate, banreason, bannedby FROM character_banned WHERE guid = ? ORDER BY bandate ASC", CONNECTION_SYNCH);
     PrepareStatement(CHAR_SEL_GUID_BY_NAME_FILTER, "SELECT guid, name FROM characters WHERE name LIKE CONCAT('%%', ?, '%%')", CONNECTION_SYNCH);
     PrepareStatement(CHAR_SEL_BANINFO_LIST, "SELECT bandate, unbandate, bannedby, banreason FROM character_banned WHERE guid = ? ORDER BY unbandate", CONNECTION_SYNCH);

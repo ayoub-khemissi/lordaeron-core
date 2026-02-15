@@ -38,6 +38,7 @@
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#include "Transmogrification.h"
 
 void AddItemsSetItem(Player* player, Item* item)
 {
@@ -540,6 +541,13 @@ ItemTemplate const* Item::GetTemplate() const
 Player* Item::GetOwner()const
 {
     return ObjectAccessor::FindPlayer(GetOwnerGUID());
+}
+
+void Item::SetBinding(bool val)
+{
+    ApplyModFlag(ITEM_FIELD_FLAGS, ITEM_FIELD_FLAG_SOULBOUND, val);
+    if (val)
+        Transmogrification::instance().AddToCollection(GetOwner(), this);
 }
 
 // Just a "legacy shortcut" for proto->GetSkill()
