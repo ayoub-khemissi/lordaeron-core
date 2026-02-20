@@ -1,0 +1,59 @@
+# ============================================================================
+# worldserver.init - Overrides applied by apply_config script
+# ============================================================================
+
+# --------------------------------------------------
+# EXPERIENCE x5
+# --------------------------------------------------
+Rate.XP.Kill = 5
+Rate.XP.Quest = 5
+Rate.XP.Explore = 5
+Rate.XP.BattlegroundKill = 5
+
+# --------------------------------------------------
+# HONOR x2
+# --------------------------------------------------
+Rate.Honor = 2
+
+# --------------------------------------------------
+# PROFESSION / SKILL x2
+# --------------------------------------------------
+SkillGain.Crafting = 2
+SkillGain.Gathering = 2
+Rate.Skill.Discovery = 2
+
+# --------------------------------------------------
+# REPUTATION x2
+# --------------------------------------------------
+Rate.Reputation.Gain = 2
+Rate.Reputation.LowLevel.Kill = 2
+Rate.Reputation.LowLevel.Quest = 2
+
+# --------------------------------------------------
+# NO DUNGEON LOCKOUT
+# Removes the 5 instances per hour limit
+# --------------------------------------------------
+AccountInstancesPerHour = 0
+
+# --------------------------------------------------
+# RAID RESET EVERY 2 DAYS
+# Multiplier: 2/7 = 0.29 (weekly raids => ~2d, heroics => ~7h)
+# /!\ Requires clearing the `instance_reset` table in the characters DB
+# --------------------------------------------------
+Rate.InstanceResetTime = 0.29
+
+# --------------------------------------------------
+# CROSSFACTION
+# --------------------------------------------------
+AllowTwoSide.Interaction.Calendar = 1
+AllowTwoSide.Interaction.Channel = 1
+AllowTwoSide.Interaction.Group = 1
+AllowTwoSide.Interaction.Guild = 1
+AllowTwoSide.Interaction.Auction = 1
+AllowTwoSide.Trade = 1
+
+# --------------------------------------------------
+# AUTO-LEARN TRAINER SPELLS
+# Players automatically learn class spells on level up
+# --------------------------------------------------
+AutoLearnTrainerSpells = 1

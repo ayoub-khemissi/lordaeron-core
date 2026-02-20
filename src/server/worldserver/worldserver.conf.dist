@@ -3183,6 +3183,15 @@ XP.Boost.Rate = 2.0
 PlayerStart.AllSpells = 0
 
 #
+#    AutoLearnTrainerSpells
+#        Description: Players automatically learn class trainer spells on level up
+#                     and at login, without visiting a trainer NPC.
+#        Default:     0 - (Disabled)
+#                     1 - (Enabled)
+
+AutoLearnTrainerSpells = 0
+
+#
 #    PlayerStart.MapsExplored
 #        Description: Characters start with all maps explored.
 #        Default:     0 - (Disabled)

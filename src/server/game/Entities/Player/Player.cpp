@@ -2493,6 +2493,8 @@ void Player::GiveLevel(uint8 level)
     SendQuestGiverStatusMultiple();
 
     sScriptMgr->OnPlayerLevelChanged(this, oldLevel);
+
+    LearnTrainerSpellsForLevel();
 }
 
 bool Player::IsMaxLevel() const
@@ -17972,6 +17974,7 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     InitTalentForLevel();
     LearnDefaultSkills();
     LearnCustomSpells();
+    LearnTrainerSpellsForLevel();
 
     // must be before inventory (some items required reputation check)
     m_reputationMgr->LoadFromDB(holder.GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_REPUTATION));
@@ -23350,6 +23353,35 @@ void Player::LearnCustomSpells()
         else                                                // but send in normal spell in game learn case
             LearnSpell(tspell, true);
     }
+}
+
+void Player::LearnTrainerSpellsForLevel()
+{
+    if (!sWorld->getBoolConfig(CONFIG_AUTO_LEARN_TRAINER_SPELLS))
+        return;
+
+    std::vector<Trainer::Trainer const*> const& classTrainers =
+        sObjectMgr->GetClassTrainers(GetClass());
+
+    bool learned;
+    do
+    {
+        learned = false;
+        for (Trainer::Trainer const* trainer : classTrainers)
+        {
+            for (Trainer::Spell const& trainerSpell : trainer->GetSpells())
+            {
+                if (!trainer->CanTeachSpell(this, &trainerSpell))
+                    continue;
+
+                if (trainerSpell.IsCastable())
+                    CastSpell(this, trainerSpell.SpellId, true);
+                else
+                    LearnSpell(trainerSpell.SpellId, false);
+                learned = true;
+            }
+        }
+    } while (learned);
 }
 
 void Player::LearnDefaultSkills()
