@@ -20,6 +20,7 @@
 #include "InstanceScript.h"
 #include "MotionMaster.h"
 #include "ObjectAccessor.h"
+#include "Player.h"
 #include "ScriptedCreature.h"
 #include "SpellAuras.h"
 #include "Vehicle.h"
@@ -29,10 +30,15 @@ enum CommonSpells
 {
     SPELL_DEFEND_DUMMY              = 64101,        // triggers 62719, 64192
     SPELL_SHIELD_BREAKER            = 68504,
-    SPELL_CHARGE                    = 68301,        // triggers 68307
-    SPELL_CHARGE_VEHICLE            = 68307,
+    SPELL_CHAMPION_CHARGE           = 63010,
     SPELL_FULL_HEAL                 = 43979,
-    SPELL_RIDE_ARGENT_VEHICLE       = 69692,
+    SPELL_TRAMPLED                  = 67867,
+};
+
+enum LanceItems
+{
+    ITEM_ALLIANCE_LANCE             = 46069,
+    ITEM_HORDE_LANCE                = 46070,
 };
 
 // ===== Shared base class for all 5 Grand Champions =====
@@ -46,29 +52,61 @@ struct trial_companion_commonAI : public ScriptedAI
 
     instance_trial_of_the_champion_InstanceMapScript* _instance;
 
+    void EquipLance()
+    {
+        if (!_instance)
+            return;
+        // Champions are the opposing faction to the player team
+        uint32 lanceItem = (_instance->GetPlayerTeam() == ALLIANCE) ? ITEM_HORDE_LANCE : ITEM_ALLIANCE_LANCE;
+        me->SetVirtualItem(0, lanceItem);
+        me->SetVirtualItem(1, 0);
+        me->SetVirtualItem(2, 0);
+    }
+
+    void EquipNormalWeapons()
+    {
+        me->LoadEquipment(1, true);
+    }
+
     uint32 _shieldBreakerTimer;
     uint32 _chargeTimer;
-    uint32 _defeatedTimer;
+    uint32 _refreshAuraTimer;
     uint32 _resetThreatTimer;
 
     bool _defeated;
     ObjectGuid _newMountGuid;
+    uint32 _remountCheckTimer;
 
     void Reset() override
     {
         if (_instance)
         {
             if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+            {
                 me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
-            else
+                me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+                EquipNormalWeapons();
+            }
+            else if (_instance->GetData(DATA_ARENA_CHALLENGE) == NOT_STARTED)
+            {
+                me->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                me->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
                 DoCast(me, SPELL_DEFEND_DUMMY, true);
+                EquipLance();
+            }
+            else
+            {
+                DoCast(me, SPELL_DEFEND_DUMMY, true);
+                EquipLance();
+            }
         }
 
         _shieldBreakerTimer = urand(3000, 5000);
         _chargeTimer        = urand(1000, 3000);
-        _defeatedTimer      = 0;
+        _refreshAuraTimer   = 0;
         _resetThreatTimer   = urand(5000, 15000);
         _defeated           = false;
+        _remountCheckTimer  = 5000;
 
         me->SetStandState(UNIT_STAND_STATE_STAND);
         me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
@@ -97,12 +135,6 @@ struct trial_companion_commonAI : public ScriptedAI
     void AttackStart(Unit* who) override
     {
         ScriptedAI::AttackStart(who);
-
-        // Set mount in combat if we're on a vehicle
-        if (Vehicle* vehicle = me->GetVehicle())
-            if (Unit* base = vehicle->GetBase())
-                if (Creature* mount = base->ToCreature())
-                    mount->AI()->AttackStart(who);
     }
 
     void MoveInLineOfSight(Unit* who) override
@@ -128,6 +160,7 @@ struct trial_companion_commonAI : public ScriptedAI
             // Ground phase (arena challenge complete)
             if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
             {
+                _defeated = true;
                 me->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
                 me->InterruptNonMeleeSpells(false);
                 me->SetStandState(UNIT_STAND_STATE_KNEEL);
@@ -140,31 +173,30 @@ struct trial_companion_commonAI : public ScriptedAI
                 if (_instance->IsArenaChallengeComplete(BOSS_GRAND_CHAMPIONS))
                     _instance->SetBossState(BOSS_GRAND_CHAMPIONS, DONE);
             }
-            // Mounted arena phase
+            // Mounted arena phase - dismount
             else
             {
-                // Dismount from vehicle
-                if (Vehicle* vehicle = me->GetVehicle())
-                {
-                    if (Unit* base = vehicle->GetBase())
-                    {
-                        me->ExitVehicle();
-                        if (Creature* mount = base->ToCreature())
-                            mount->DespawnOrUnsummon();
-                    }
-                }
+                _defeated = true;
 
-                me->SetStandState(UNIT_STAND_STATE_DEAD);
+                // Remove cosmetic mount
+                me->SetMountDisplayId(0);
+
+                DoCast(me, SPELL_TRAMPLED, true);
                 me->SetHealth(1);
-
+                me->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                me->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
                 me->SetReactState(REACT_PASSIVE);
                 me->GetMotionMaster()->Clear();
                 me->GetMotionMaster()->MoveIdle();
 
-                _defeatedTimer = 15000;
-            }
+                _refreshAuraTimer = 0;
 
-            _defeated = true;
+                // If all 3 champions are dismounted, transition to ground phase
+                if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
+                    _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
+                else
+                    DoUseNearbyMountIfCan();
+            }
         }
     }
 
@@ -177,23 +209,53 @@ struct trial_companion_commonAI : public ScriptedAI
         {
             case POINT_ID_MOUNT:
             {
+                // Don't remount if arena phase has already transitioned
+                if (_instance->GetData(DATA_ARENA_CHALLENGE) != IN_PROGRESS)
+                    return;
+
                 uint32 mountEntry = _instance->GetMountEntryForChampion();
 
                 Creature* pMount = ObjectAccessor::GetCreature(*me, _newMountGuid);
-                if (!pMount || pMount->HasAura(SPELL_RIDE_ARGENT_VEHICLE))
+                if (!pMount || !pMount->IsAlive())
                     pMount = me->FindNearestCreature(mountEntry, 60.0f);
 
-                if (!pMount)
+                if (!pMount || !pMount->IsAlive())
+                {
+                    // Mount no longer available - stay down
+                    me->GetMotionMaster()->Clear();
+                    me->GetMotionMaster()->MoveIdle();
+
+                    if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
+                        _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
                     return;
+                }
 
-                DoCast(pMount, SPELL_RIDE_ARGENT_VEHICLE, true);
+                // Get the mount display before despawning
+                uint32 displayId = pMount->GetDisplayId();
+                pMount->DespawnOrUnsummon();
 
-                if (me->GetVictim())
-                    if (Creature* mountCreature = pMount->ToCreature())
-                        mountCreature->AI()->AttackStart(me->GetVictim());
+                me->SetMountDisplayId(displayId);
+
+                me->RemoveAurasDueToSpell(SPELL_TRAMPLED);
+                DoCast(me, SPELL_FULL_HEAL, true);
 
                 _defeated = false;
+                me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
                 me->SetReactState(REACT_AGGRESSIVE);
+                DoZoneInCombat();
+
+                break;
+            }
+            case POINT_ID_CENTER:
+                _instance->MoveChampionToHome(me);
+                break;
+            case POINT_ID_HOME:
+            {
+                float angle = me->GetAbsoluteAngle(aArenaCenterPosition[0], aArenaCenterPosition[1]);
+                me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), angle);
+                me->SetFacingTo(angle);
+                _instance->InformChampionReachHome();
                 break;
             }
             case POINT_ID_EXIT:
@@ -210,23 +272,24 @@ struct trial_companion_commonAI : public ScriptedAI
         if (!_instance)
             return;
 
-        if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
-            _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
-        else
+        uint32 mountEntry = _instance->GetMountEntryForChampion();
+        Creature* pMount = me->FindNearestCreature(mountEntry, 60.0f);
+
+        if (pMount)
         {
             me->SetStandState(UNIT_STAND_STATE_STAND);
-
-            uint32 mountEntry = _instance->GetMountEntryForChampion();
-
-            if (Creature* pMount = me->FindNearestCreature(mountEntry, 60.0f))
-            {
-                float fX, fY, fZ;
-                pMount->GetContactPoint(me, fX, fY, fZ);
-                me->SetWalk(true);
-                me->GetMotionMaster()->Clear();
-                me->GetMotionMaster()->MovePoint(POINT_ID_MOUNT, fX, fY, fZ);
-                _newMountGuid = pMount->GetGUID();
-            }
+            float fX, fY, fZ;
+            pMount->GetContactPoint(me, fX, fY, fZ);
+            me->SetWalk(true);
+            me->GetMotionMaster()->Clear();
+            me->GetMotionMaster()->MovePoint(POINT_ID_MOUNT, fX, fY, fZ);
+            _newMountGuid = pMount->GetGUID();
+        }
+        else
+        {
+            // No mount available - if all 3 champions are dismounted, transition to ground phase
+            if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
+                _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
         }
     }
 
@@ -235,20 +298,66 @@ struct trial_companion_commonAI : public ScriptedAI
 
     void UpdateAI(uint32 diff) override
     {
-        if (!UpdateVictim())
-            return;
-
-        // Remount timer after being dismounted
-        if (_defeatedTimer)
+        // Dismounted champion - refresh/reapply Trampled aura when a player mount is nearby
+        if (_defeated && _instance && _instance->GetData(DATA_ARENA_CHALLENGE) != DONE)
         {
-            if (_defeatedTimer <= diff)
+            if (_refreshAuraTimer <= diff)
             {
-                DoUseNearbyMountIfCan();
-                _defeatedTimer = 0;
+                uint32 playerMountEntry = (_instance->GetPlayerTeam() == ALLIANCE) ? NPC_WARHORSE_ALLIANCE : NPC_BATTLEWORG_HORDE;
+                if (Creature* mount = me->FindNearestCreature(playerMountEntry, 2.0f))
+                {
+                    // Only apply if a player is riding the mount
+                    if (Vehicle* veh = mount->GetVehicleKit())
+                    {
+                        if (Unit* passenger = veh->GetPassenger(0))
+                        {
+                            if (passenger->GetTypeId() == TYPEID_PLAYER)
+                            {
+                                if (Aura* aura = me->GetAura(SPELL_TRAMPLED))
+                                    aura->RefreshDuration();
+                                else
+                                    DoCast(me, SPELL_TRAMPLED, true);
+
+                                _refreshAuraTimer = 3000;
+                            }
+                        }
+                    }
+                }
             }
             else
-                _defeatedTimer -= diff;
+                _refreshAuraTimer -= diff;
+
+            // Periodic fallback: if no valid mount exists, force DEAD state and re-check transition
+            if (_instance->GetData(DATA_ARENA_CHALLENGE) == IN_PROGRESS)
+            {
+                if (_remountCheckTimer <= diff)
+                {
+                    _remountCheckTimer = 5000;
+
+                    if (me->GetMountDisplayId() == 0)
+                    {
+                        uint32 mountEntry = _instance->GetMountEntryForChampion();
+                        Creature* pMount = me->FindNearestCreature(mountEntry, 60.0f);
+                        if (!pMount)
+                        {
+                            // No valid mount available - check transition
+                            me->GetMotionMaster()->Clear();
+                            me->GetMotionMaster()->MoveIdle();
+
+                            if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
+                                _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
+                        }
+                    }
+                }
+                else
+                    _remountCheckTimer -= diff;
+            }
+
+            return;
         }
+
+        if (!UpdateVictim())
+            return;
 
         if (_defeated)
             return;
@@ -268,26 +377,16 @@ struct trial_companion_commonAI : public ScriptedAI
             else
                 _shieldBreakerTimer -= diff;
 
-            if (_chargeTimer)
+            if (_chargeTimer <= diff)
             {
-                if (_chargeTimer <= diff)
-                {
-                    if (me->GetVictim())
-                    {
-                        DoCast(me->GetVictim(), SPELL_CHARGE);
-
-                        // Signal mount to charge
-                        if (Vehicle* vehicle = me->GetVehicle())
-                            if (Unit* base = vehicle->GetBase())
-                                if (Creature* mount = base->ToCreature())
-                                    mount->AI()->DoAction(ACTION_CHARGE_VEHICLE);
-
-                        _chargeTimer = 0;
-                    }
-                }
-                else
-                    _chargeTimer -= diff;
+                if (me->GetVictim())
+                    DoCast(me->GetVictim(), SPELL_CHAMPION_CHARGE);
+                _chargeTimer = urand(5000, 10000);
             }
+            else
+                _chargeTimer -= diff;
+
+            DoMeleeAttackIfReady();
         }
         // Ground phase
         else if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
@@ -768,7 +867,6 @@ public:
 
 enum GrandChampionSpells
 {
-    SPELL_CHAMPION_CHARGE   = 63010,
     SPELL_CHAMPION_DEFEND   = 64100,
 };
 
@@ -795,6 +893,24 @@ public:
             _chargeTimer        = 1000;
             _blockTimer         = 0;
             _chargeResetTimer   = 0;
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            if (_instance)
+                _instance->SetData(ACTION_ARENA_HELPER_DIED, 0);
+
+            me->DespawnOrUnsummon(5s);
+        }
+
+        void MovementInform(uint32 type, uint32 pointId) override
+        {
+            if (type == POINT_MOTION_TYPE && pointId == POINT_ID_HOME)
+            {
+                float angle = me->GetAbsoluteAngle(aArenaCenterPosition[0], aArenaCenterPosition[1]);
+                me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), angle);
+                me->SetFacingTo(angle);
+            }
         }
 
         void UpdateAI(uint32 diff) override
@@ -857,76 +973,10 @@ public:
 
     struct npc_champion_mountAI : public ScriptedAI
     {
-        npc_champion_mountAI(Creature* creature) : ScriptedAI(creature)
-        {
-            _instance = static_cast<instance_trial_of_the_champion_InstanceMapScript*>(creature->GetInstanceScript());
-        }
-
-        instance_trial_of_the_champion_InstanceMapScript* _instance;
-
-        uint32 _chargeResetTimer;
-
-        void Reset() override
-        {
-            _chargeResetTimer = 0;
-        }
+        npc_champion_mountAI(Creature* creature) : ScriptedAI(creature) { }
 
         void MoveInLineOfSight(Unit* /*who*/) override { }
-
-        void MovementInform(uint32 type, uint32 pointId) override
-        {
-            if (type != POINT_MOTION_TYPE || !_instance)
-                return;
-
-            switch (pointId)
-            {
-                case POINT_ID_CENTER:
-                    _instance->MoveChampionToHome(me);
-                    break;
-                case POINT_ID_HOME:
-                    if (Creature* pTrigger = me->FindNearestCreature(NPC_WORLD_TRIGGER, 200.0f))
-                    {
-                        me->SetHomePosition(me->GetPositionX(), me->GetPositionY(), me->GetPositionZ(), me->GetAbsoluteAngle(pTrigger));
-                        me->SetFacingToObject(pTrigger);
-                    }
-                    _instance->InformChampionReachHome();
-                    break;
-            }
-        }
-
-        void DoAction(int32 action) override
-        {
-            if (action == ACTION_CHARGE_VEHICLE)
-            {
-                if (me->GetVictim())
-                {
-                    DoCast(me->GetVictim(), SPELL_CHARGE_VEHICLE, true);
-                    _chargeResetTimer = urand(5000, 10000);
-                }
-            }
-        }
-
-        void UpdateAI(uint32 diff) override
-        {
-            if (!UpdateVictim())
-                return;
-
-            if (_chargeResetTimer)
-            {
-                if (_chargeResetTimer <= diff)
-                {
-                    // Inform rider that charge cooldown is done
-                    if (Vehicle* vehicle = me->GetVehicleKit())
-                        if (Unit* passenger = vehicle->GetPassenger(0))
-                            if (Creature* rider = passenger->ToCreature())
-                                rider->AI()->DoAction(ACTION_CHARGE_DONE);
-
-                    _chargeResetTimer = 0;
-                }
-                else
-                    _chargeResetTimer -= diff;
-            }
-        }
+        void UpdateAI(uint32 /*diff*/) override { }
     };
 
     CreatureAI* GetAI(Creature* creature) const override
@@ -1007,6 +1057,33 @@ public:
     }
 };
 
+// ===== SpellScript - Prevent mounting ToC5 vehicle without Argent Lance =====
+
+enum PlayerVehicleItems
+{
+    ITEM_ARGENT_LANCE       = 46106,
+};
+
+// 67830 - Ride Vehicle (ToC5 spellclick)
+class spell_toc5_ride_mount : public SpellScript
+{
+    PrepareSpellScript(spell_toc5_ride_mount);
+
+    SpellCastResult CheckLance()
+    {
+        Unit* caster = GetCaster();
+        if (Player* player = caster->ToPlayer())
+            if (!player->HasItemOrGemWithIdEquipped(ITEM_ARGENT_LANCE, 1))
+                return SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW;
+        return SPELL_CAST_OK;
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_toc5_ride_mount::CheckLance);
+    }
+};
+
 void AddSC_boss_grand_champions()
 {
     new boss_champion_warrior();
@@ -1017,4 +1094,5 @@ void AddSC_boss_grand_champions()
     new npc_trial_grand_champion();
     new npc_champion_mount();
     new npc_toc5_player_vehicle();
+    RegisterSpellScript(spell_toc5_ride_mount);
 }

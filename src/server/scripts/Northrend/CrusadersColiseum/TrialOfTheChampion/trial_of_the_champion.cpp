@@ -64,9 +64,19 @@ public:
 
             if (_instance->GetBossState(BOSS_GRAND_CHAMPIONS) == NOT_STARTED)
             {
-                AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I'm ready.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
-                AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I'm ready. Skip the intros.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 2);
-                SendGossipMenuFor(player, TEXT_ID_READY_FIRST_CHALLENGE, me->GetGUID());
+                if (_instance->GetData(DATA_ARENA_CHALLENGE) == DONE)
+                {
+                    // Ground phase restart after wipe — joust already completed
+                    AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I'm ready to fight.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 5);
+                    SendGossipMenuFor(player, TEXT_ID_READY_FIRST_CHALLENGE, me->GetGUID());
+                }
+                else
+                {
+                    // Normal jousting start
+                    AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I'm ready.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 1);
+                    AddGossipItemFor(player, GOSSIP_ICON_CHAT, "I'm ready. Skip the intros.", GOSSIP_SENDER_MAIN, GOSSIP_ACTION_INFO_DEF + 2);
+                    SendGossipMenuFor(player, TEXT_ID_READY_FIRST_CHALLENGE, me->GetGUID());
+                }
             }
             else if (_instance->GetBossState(BOSS_GRAND_CHAMPIONS) == DONE && _instance->GetBossState(BOSS_ARGENT_CHALLENGE) == NOT_STARTED)
             {
@@ -103,6 +113,9 @@ public:
                     break;
                 case GOSSIP_ACTION_INFO_DEF + 4:
                     _instance->SetData(ACTION_PREPARE_BLACK_KNIGHT, 0);
+                    break;
+                case GOSSIP_ACTION_INFO_DEF + 5:
+                    _instance->SetData(ACTION_PREPARE_GROUND_PHASE, 0);
                     break;
             }
 

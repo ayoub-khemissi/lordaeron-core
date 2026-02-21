@@ -26,7 +26,6 @@
 #include "Player.h"
 #include "TemporarySummon.h"
 #include "Containers.h"
-#include "Vehicle.h"
 #include "trial_of_the_champion.h"
 
 // ===== Dialogue Events (EventMap IDs) =====
@@ -83,6 +82,8 @@ enum InstanceEvents
     EVENT_INTRO_SPAWN_NEXT,
     EVENT_GATE_RESET,
     EVENT_CHAMPIONS_SUMMON,
+    EVENT_ARENA_NEXT_WAVE,
+    EVENT_WIPE_CHECK,
 };
 
 // ===== Implementation =====
@@ -102,6 +103,7 @@ instance_trial_of_the_champion_InstanceMapScript::instance_trial_of_the_champion
     m_bSkipIntro = false;
     m_bHadWorseAchiev = false;
     m_uiArenaState = NOT_STARTED;
+    m_lanceCheckTimer = 1000;
 
     m_vAllianceTriggersGuids.resize(MAX_CHAMPIONS_AVAILABLE);
     m_vHordeTriggersGuids.resize(MAX_CHAMPIONS_AVAILABLE);
@@ -111,6 +113,18 @@ Creature* instance_trial_of_the_champion_InstanceMapScript::GetCreatureByEntry(u
 {
     auto itr = m_mNpcEntryGuidMap.find(entry);
     return (itr != m_mNpcEntryGuidMap.end()) ? instance->GetCreature(itr->second) : nullptr;
+}
+
+bool instance_trial_of_the_champion_InstanceMapScript::IsWipe()
+{
+    Map::PlayerList const& players = instance->GetPlayers();
+    if (players.isEmpty())
+        return true;
+    for (auto const& ref : players)
+        if (Player* player = ref.GetSource())
+            if (player->IsAlive())
+                return false;
+    return true;
 }
 
 void instance_trial_of_the_champion_InstanceMapScript::OnPlayerEnter(Player* pPlayer)
@@ -136,6 +150,7 @@ void instance_trial_of_the_champion_InstanceMapScript::OnPlayerEnter(Player* pPl
     }
 
     DoSummonHeraldIfNeeded(pPlayer);
+    DoSummonArenaMountsIfNeeded(pPlayer);
 }
 
 void instance_trial_of_the_champion_InstanceMapScript::OnCreatureCreate(Creature* pCreature)
@@ -230,6 +245,7 @@ void instance_trial_of_the_champion_InstanceMapScript::OnGameObjectCreate(GameOb
     {
         case GO_MAIN_GATE:
         case GO_NORTH_GATE:
+        case GO_EAST_GATE:
         case GO_CHAMPIONS_LOOT:
         case GO_CHAMPIONS_LOOT_H:
         case GO_EADRIC_LOOT:
@@ -254,17 +270,15 @@ bool instance_trial_of_the_champion_InstanceMapScript::SetBossState(uint32 id, E
         case BOSS_GRAND_CHAMPIONS:
             if (state == IN_PROGRESS || state == FAIL)
             {
-                // Toggle north gate (combat door)
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, state != IN_PROGRESS);
+                DoSetCombatDoorState(state != IN_PROGRESS);
+
+                if (state == IN_PROGRESS)
+                    m_events.ScheduleEvent(EVENT_WIPE_CHECK, 2s);
             }
             if (state == DONE)
             {
-                // Open north gate
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, true);
+                m_events.CancelEvent(EVENT_WIPE_CHECK);
+                DoSetCombatDoorState(true);
 
                 // Spawn loot
                 if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
@@ -287,16 +301,10 @@ bool instance_trial_of_the_champion_InstanceMapScript::SetBossState(uint32 id, E
             break;
         case BOSS_ARGENT_CHALLENGE:
             if (state == IN_PROGRESS || state == FAIL)
-            {
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, state != IN_PROGRESS);
-            }
+                DoSetCombatDoorState(state != IN_PROGRESS);
             if (state == DONE)
             {
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, true);
+                DoSetCombatDoorState(true);
 
                 // Spawn appropriate loot
                 if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
@@ -324,9 +332,7 @@ bool instance_trial_of_the_champion_InstanceMapScript::SetBossState(uint32 id, E
         case BOSS_BLACK_KNIGHT:
             if (state == IN_PROGRESS)
             {
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, false);
+                DoSetCombatDoorState(false);
 
                 m_bHadWorseAchiev = true;
 
@@ -335,18 +341,14 @@ bool instance_trial_of_the_champion_InstanceMapScript::SetBossState(uint32 id, E
             }
             else if (state == DONE)
             {
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, true);
+                DoSetCombatDoorState(true);
 
                 // Start epilog
                 m_events.ScheduleEvent(EVENT_EPILOG_CHEER, 1s);
             }
             else if (state == FAIL)
             {
-                auto itr = m_mGoEntryGuidMap.find(GO_NORTH_GATE);
-                if (itr != m_mGoEntryGuidMap.end())
-                    HandleGameObject(itr->second, true);
+                DoSetCombatDoorState(true);
             }
             break;
     }
@@ -363,9 +365,12 @@ void instance_trial_of_the_champion_InstanceMapScript::SetData(uint32 uiType, ui
             {
                 m_uiArenaStage = 0;
                 DoSendNextArenaWave();
+                m_events.ScheduleEvent(EVENT_WIPE_CHECK, 2s);
+                DoSetCombatDoorState(false);
             }
             else if (uiData == DONE)
             {
+                m_events.CancelEvent(EVENT_WIPE_CHECK);
                 ++m_uiChampionsCount;
                 if (m_uiChampionsCount == MAX_CHAMPIONS_ARENA)
                 {
@@ -400,6 +405,9 @@ void instance_trial_of_the_champion_InstanceMapScript::SetData(uint32 uiType, ui
         case ACTION_PREPARE_BLACK_KNIGHT:
             DoPrepareBlackKnight();
             return;
+        case ACTION_PREPARE_GROUND_PHASE:
+            DoPrepareGroundPhase();
+            return;
         case ACTION_ARGENT_TRASH_DIED:
         {
             m_lArgentTrashGuids.remove(ObjectGuid::Create<HighGuid::Unit>(uiData, ObjectGuid::LowType(0)));
@@ -423,6 +431,31 @@ void instance_trial_of_the_champion_InstanceMapScript::SetData(uint32 uiType, ui
         case ACTION_HAD_WORSE_FAILED:
             m_bHadWorseAchiev = false;
             return;
+        case ACTION_ARENA_HELPER_DIED:
+        {
+            if (m_uiArenaStage >= MAX_CHAMPIONS_ARENA)
+                return;
+
+            bool allDead = true;
+            for (auto const& guid : m_sArenaHelpersGuids[m_uiArenaStage])
+            {
+                if (Creature* pHelper = instance->GetCreature(guid))
+                {
+                    if (pHelper->IsAlive())
+                    {
+                        allDead = false;
+                        break;
+                    }
+                }
+            }
+
+            if (allDead)
+            {
+                ++m_uiArenaStage;
+                m_events.ScheduleEvent(EVENT_ARENA_NEXT_WAVE, 2s);
+            }
+            return;
+        }
     }
 }
 
@@ -449,9 +482,6 @@ ObjectGuid instance_trial_of_the_champion_InstanceMapScript::GetGuidData(uint32 
         case DATA_GUID_CHAMPION_1: return m_ArenaChampionsGuids[0];
         case DATA_GUID_CHAMPION_2: return m_ArenaChampionsGuids[1];
         case DATA_GUID_CHAMPION_3: return m_ArenaChampionsGuids[2];
-        case DATA_GUID_MOUNT_1:    return m_ArenaMountsGuids[0];
-        case DATA_GUID_MOUNT_2:    return m_ArenaMountsGuids[1];
-        case DATA_GUID_MOUNT_3:    return m_ArenaMountsGuids[2];
         case DATA_GUID_ANNOUNCER:
         {
             auto itr = m_mNpcEntryGuidMap.find(m_uiHeraldEntry);
@@ -478,9 +508,6 @@ void instance_trial_of_the_champion_InstanceMapScript::SetGuidData(uint32 uiType
         case DATA_GUID_CHAMPION_1: m_ArenaChampionsGuids[0] = uiData; break;
         case DATA_GUID_CHAMPION_2: m_ArenaChampionsGuids[1] = uiData; break;
         case DATA_GUID_CHAMPION_3: m_ArenaChampionsGuids[2] = uiData; break;
-        case DATA_GUID_MOUNT_1:    m_ArenaMountsGuids[0] = uiData; break;
-        case DATA_GUID_MOUNT_2:    m_ArenaMountsGuids[1] = uiData; break;
-        case DATA_GUID_MOUNT_3:    m_ArenaMountsGuids[2] = uiData; break;
     }
 }
 
@@ -504,24 +531,44 @@ uint32 instance_trial_of_the_champion_InstanceMapScript::GetMountEntryForChampio
 
 bool instance_trial_of_the_champion_InstanceMapScript::IsArenaChallengeComplete(uint32 uiType)
 {
-    uint8 uiStandState = 0;
-
     if (uiType == DATA_ARENA_CHALLENGE)
     {
         if (m_uiArenaState == SPECIAL || m_uiArenaState == DONE)
             return true;
-        uiStandState = UNIT_STAND_STATE_DEAD;
+
+        // Check if all champions are dismounted (no cosmetic mount)
+        for (auto const& guid : m_ArenaChampionsGuids)
+        {
+            if (Creature* pChampion = instance->GetCreature(guid))
+                if (pChampion->GetMountDisplayId() != 0)
+                    return false;
+        }
+        return true;
     }
     else if (uiType == BOSS_GRAND_CHAMPIONS)
-        uiStandState = UNIT_STAND_STATE_KNEEL;
-
-    for (auto const& guid : m_ArenaChampionsGuids)
     {
-        if (Creature* pChampion = instance->GetCreature(guid))
-            if (pChampion->GetStandState() != uiStandState)
-                return false;
+        for (auto const& guid : m_ArenaChampionsGuids)
+        {
+            if (Creature* pChampion = instance->GetCreature(guid))
+                if (pChampion->GetStandState() != UNIT_STAND_STATE_KNEEL)
+                    return false;
+        }
+        return true;
     }
+
     return true;
+}
+
+// ===== Combat Door Helper =====
+
+void instance_trial_of_the_champion_InstanceMapScript::DoSetCombatDoorState(bool open)
+{
+    for (uint32 entry : { GO_NORTH_GATE, GO_EAST_GATE })
+    {
+        auto itr = m_mGoEntryGuidMap.find(entry);
+        if (itr != m_mGoEntryGuidMap.end())
+            HandleGameObject(itr->second, open);
+    }
 }
 
 // ===== Summon Herald & Mounts =====
@@ -531,60 +578,62 @@ void instance_trial_of_the_champion_InstanceMapScript::DoSummonHeraldIfNeeded(Un
     if (!pSummoner || !m_uiHeraldEntry)
         return;
 
-    if (GetCreatureByEntry(m_uiHeraldEntry))
+    if (!GetCreatureByEntry(m_uiHeraldEntry))
+        pSummoner->SummonCreature(m_uiHeraldEntry, aHeraldPositions[0][0], aHeraldPositions[0][1], aHeraldPositions[0][2], aHeraldPositions[0][3], TEMPSUMMON_DEAD_DESPAWN, 0s);
+}
+
+void instance_trial_of_the_champion_InstanceMapScript::DoSummonArenaMountsIfNeeded(Unit* pSummoner)
+{
+    if (!pSummoner || !m_uiTeam)
         return;
 
-    pSummoner->SummonCreature(m_uiHeraldEntry, aHeraldPositions[0][0], aHeraldPositions[0][1], aHeraldPositions[0][2], aHeraldPositions[0][3], TEMPSUMMON_DEAD_DESPAWN, 0s);
+    if (GetBossState(BOSS_GRAND_CHAMPIONS) == DONE)
+        return;
 
-    // Summon champion mounts if required
-    if (GetBossState(BOSS_GRAND_CHAMPIONS) != DONE)
+    // Check if at least one correct-faction mount already exists alive
+    uint32 expectedEntry = m_uiTeam == ALLIANCE ? NPC_WARHORSE_ALLIANCE : NPC_WARHORSE_HORDE;
+    for (auto const& guid : m_lArenaMountsGuids)
     {
-        for (auto const& mountData : aTrialChampionsMounts)
-            pSummoner->SummonCreature(m_uiTeam == ALLIANCE ? mountData.uiEntryAlliance : mountData.uiEntryHorde,
-                mountData.fX, mountData.fY, mountData.fZ, mountData.fO, TEMPSUMMON_DEAD_DESPAWN, 0s);
+        if (Creature* pMount = instance->GetCreature(guid))
+        {
+            if (pMount->IsAlive() && pMount->GetEntry() == expectedEntry)
+                return;
+        }
     }
+
+    // No correct-faction mounts found - spawn them all
+    for (auto const& mountData : aTrialChampionsMounts)
+        pSummoner->SummonCreature(m_uiTeam == ALLIANCE ? mountData.uiEntryAlliance : mountData.uiEntryHorde,
+            mountData.fX, mountData.fY, mountData.fZ, mountData.fO, TEMPSUMMON_DEAD_DESPAWN, 0s);
 }
 
 // ===== Arena Wave Management =====
 
 void instance_trial_of_the_champion_InstanceMapScript::DoSendNextArenaWave()
 {
-    Creature* pCenterTrigger = GetCreatureByEntry(NPC_WORLD_TRIGGER);
-    if (!pCenterTrigger)
-        return;
-
-    float fX, fY, fZ;
-
-    // All trash waves cleared - send mounted champions to center
+    // All trash waves cleared - champions become attackable and aggro
     if (m_uiArenaStage == MAX_CHAMPIONS_ARENA)
     {
         for (uint8 i = 0; i < MAX_CHAMPIONS_ARENA; ++i)
         {
-            if (Creature* pMount = instance->GetCreature(m_ArenaMountsGuids[i]))
-            {
-                pMount->SetWalk(false);
-                pCenterTrigger->GetClosePoint(fX, fY, fZ, pMount->GetCombatReach(), 2 * INTERACTION_DISTANCE,
-                    pCenterTrigger->GetAbsoluteAngle(pMount));
-                pMount->GetMotionMaster()->MovePoint(POINT_ID_COMBAT, fX, fY, fZ);
-            }
-
             if (Creature* pChampion = instance->GetCreature(m_ArenaChampionsGuids[i]))
+            {
                 pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+                pChampion->AI()->DoZoneInCombat();
+            }
         }
     }
-    // Send trash waves
+    // Send trash waves - helpers become attackable and aggro
     else
     {
         for (auto const& guid : m_sArenaHelpersGuids[m_uiArenaStage])
         {
             if (Creature* pHelper = instance->GetCreature(guid))
             {
-                pHelper->SetWalk(false);
-                pCenterTrigger->GetClosePoint(fX, fY, fZ, pHelper->GetCombatReach(), 2 * INTERACTION_DISTANCE,
-                    pCenterTrigger->GetAbsoluteAngle(pHelper));
-                pHelper->GetMotionMaster()->MovePoint(POINT_ID_COMBAT, fX, fY, fZ);
                 pHelper->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
                 pHelper->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+                pHelper->AI()->DoZoneInCombat();
             }
         }
     }
@@ -594,8 +643,6 @@ void instance_trial_of_the_champion_InstanceMapScript::DoCleanupArenaOnWipe()
 {
     for (uint8 i = 0; i < MAX_CHAMPIONS_ARENA; ++i)
     {
-        if (Creature* pMount = instance->GetCreature(m_ArenaMountsGuids[i]))
-            pMount->DespawnOrUnsummon();
         if (Creature* pChampion = instance->GetCreature(m_ArenaChampionsGuids[i]))
             pChampion->DespawnOrUnsummon();
         for (auto const& guid : m_sArenaHelpersGuids[i])
@@ -604,11 +651,82 @@ void instance_trial_of_the_champion_InstanceMapScript::DoCleanupArenaOnWipe()
         m_sArenaHelpersGuids[i].clear();
     }
 
-    // Reset herald
+    // Despawn remaining arena mounts and respawn them all at their initial positions
+    for (auto const& guid : m_lArenaMountsGuids)
+        if (Creature* pMount = instance->GetCreature(guid))
+            pMount->DespawnOrUnsummon();
+    m_lArenaMountsGuids.clear();
+
+    if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
+    {
+        for (auto const& mountData : aTrialChampionsMounts)
+            pHerald->SummonCreature(m_uiTeam == ALLIANCE ? mountData.uiEntryAlliance : mountData.uiEntryHorde,
+                mountData.fX, mountData.fY, mountData.fZ, mountData.fO, TEMPSUMMON_DEAD_DESPAWN, 0s);
+    }
+
+    // Cancel pending events
+    m_events.Reset();
+
+    DoSetCombatDoorState(true);
+
+    // Reset herald: gossip + move to spawn position
     if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
     {
         pHerald->SetNpcFlag(UNIT_NPC_FLAG_GOSSIP);
-        pHerald->GetMotionMaster()->MoveTargetedHome();
+        pHerald->GetMotionMaster()->MovePoint(0, aHeraldPositions[0][0], aHeraldPositions[0][1], aHeraldPositions[0][2]);
+    }
+}
+
+void instance_trial_of_the_champion_InstanceMapScript::DoCleanupGroundPhaseOnWipe()
+{
+    // Despawn champions
+    for (uint8 i = 0; i < MAX_CHAMPIONS_ARENA; ++i)
+        if (Creature* pChampion = instance->GetCreature(m_ArenaChampionsGuids[i]))
+            pChampion->DespawnOrUnsummon();
+
+    DoSetCombatDoorState(true);
+
+    // Cancel pending events
+    m_events.Reset();
+
+    // Reset boss state
+    SetBossState(BOSS_GRAND_CHAMPIONS, FAIL);
+    SetBossState(BOSS_GRAND_CHAMPIONS, NOT_STARTED);
+
+    // Keep m_uiArenaState = DONE so gossip knows we're in ground phase
+    m_uiArenaState = DONE;
+
+    // Reset herald: gossip + move to spawn position
+    if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
+    {
+        pHerald->SetNpcFlag(UNIT_NPC_FLAG_GOSSIP);
+        pHerald->GetMotionMaster()->MovePoint(0, aHeraldPositions[0][0], aHeraldPositions[0][1], aHeraldPositions[0][2]);
+    }
+}
+
+void instance_trial_of_the_champion_InstanceMapScript::DoPrepareGroundPhase()
+{
+    Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry);
+    if (!pHerald)
+        return;
+
+    const ChampionsData* champTable = m_uiTeam == ALLIANCE ? aHordeChampions : aAllianceChampions;
+
+    for (uint8 i = 0; i < MAX_CHAMPIONS_ARENA; ++i)
+    {
+        const ChampionsData& champData = champTable[m_vChampionsIndex[i]];
+
+        if (Creature* pChampion = pHerald->SummonCreature(champData.uiEntry,
+            aChampsPositions[i][0], aChampsPositions[i][1], aChampsPositions[i][2], aChampsPositions[i][3],
+            TEMPSUMMON_DEAD_DESPAWN, 0s))
+        {
+            m_ArenaChampionsGuids[i] = pChampion->GetGUID();
+            pChampion->SetMountDisplayId(0);
+            pChampion->SetHomePosition(aChampsPositions[i][0], aChampsPositions[i][1], aChampsPositions[i][2], aChampsPositions[i][3]);
+            pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+            pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+            pChampion->SetReactState(REACT_AGGRESSIVE);
+        }
     }
 }
 
@@ -641,7 +759,6 @@ void instance_trial_of_the_champion_InstanceMapScript::MoveChampionToHome(Creatu
     if (!pTrigger)
         return;
 
-    pChampion->SetWalk(true);
     pChampion->GetMotionMaster()->MovePoint(POINT_ID_HOME, pTrigger->GetPositionX(), pTrigger->GetPositionY(), pTrigger->GetPositionZ());
 
     if (m_uiIntroStage == MAX_CHAMPIONS_ARENA)
@@ -693,8 +810,14 @@ void instance_trial_of_the_champion_InstanceMapScript::DoSendChampionsToExit()
             if (GetBossState(BOSS_GRAND_CHAMPIONS) == DONE)
                 pChampion->CastSpell(pChampion, SPELL_CHAMPION_KILL_CREDIT, true);
 
-            pChampion->SetWalk(true);
+            pChampion->SetWalk(false);
             pChampion->SetStandState(UNIT_STAND_STATE_STAND);
+            pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+            pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+            pChampion->SetReactState(REACT_PASSIVE);
+            pChampion->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
+            pChampion->RemoveAurasDueToSpell(67867); // SPELL_TRAMPLED
+            pChampion->GetMotionMaster()->Clear();
             pChampion->GetMotionMaster()->MovePoint(POINT_ID_EXIT, aChampsPositions[0][0], aChampsPositions[0][1], aChampsPositions[0][2]);
         }
     }
@@ -729,7 +852,7 @@ void instance_trial_of_the_champion_InstanceMapScript::WriteSaveDataMore(std::os
 void instance_trial_of_the_champion_InstanceMapScript::ReadSaveDataMore(std::istringstream& stream)
 {
     stream >> m_uiArenaState;
-    if (m_uiArenaState == IN_PROGRESS)
+    if (m_uiArenaState != NOT_STARTED && m_uiArenaState != DONE)
         m_uiArenaState = NOT_STARTED;
 }
 
@@ -743,6 +866,35 @@ void instance_trial_of_the_champion_InstanceMapScript::Update(uint32 diff)
     {
         ProcessDialogueEvent(eventId);
     }
+
+    // Periodic check: eject players from ToC5 mounts if Argent Lance (46106) is not equipped
+    if (m_lanceCheckTimer <= diff)
+    {
+        m_lanceCheckTimer = 1000;
+
+        Map::PlayerList const& players = instance->GetPlayers();
+        for (auto itr = players.begin(); itr != players.end(); ++itr)
+        {
+            if (Player* player = itr->GetSource())
+            {
+                if (!player->GetVehicle())
+                    continue;
+
+                Unit* vehicleBase = player->GetVehicleBase();
+                if (!vehicleBase)
+                    continue;
+
+                uint32 entry = vehicleBase->GetEntry();
+                if (entry != NPC_WARHORSE_ALLIANCE && entry != NPC_BATTLEWORG_HORDE)
+                    continue;
+
+                if (!player->HasItemOrGemWithIdEquipped(46106, 1))
+                    player->ExitVehicle();
+            }
+        }
+    }
+    else
+        m_lanceCheckTimer -= diff;
 }
 
 void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint32 eventId)
@@ -814,29 +966,20 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
 
                 if (m_bSkipIntro)
                 {
-                    // Short intro: spawn at trigger positions directly
+                    // Short intro: spawn at trigger positions directly (mounted via creature_template_addon)
                     Creature* pTrigger = instance->GetCreature(m_uiTeam == ALLIANCE ? m_vHordeTriggersGuids[uiIndex] : m_vAllianceTriggersGuids[uiIndex]);
                     if (!pTrigger)
                         return;
 
                     float angle = pTrigger->GetAbsoluteAngle(pCenterTrigger);
 
-                    if (Creature* pMount = pHerald->SummonCreature(champData->uiMount,
+                    if (Creature* pChampion = pHerald->SummonCreature(champData->uiEntry,
                         pTrigger->GetPositionX(), pTrigger->GetPositionY(), pTrigger->GetPositionZ(), angle, TEMPSUMMON_DEAD_DESPAWN, 0s))
                     {
-                        // Champion is auto-spawned as passenger by vehicle_template_accessory
-                        if (Vehicle* vehicle = pMount->GetVehicleKit())
-                        {
-                            if (Unit* passenger = vehicle->GetPassenger(0))
-                            {
-                                if (Creature* pChampion = passenger->ToCreature())
-                                {
-                                    pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
-                                    m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
-                                }
-                            }
-                        }
-                        m_ArenaMountsGuids[m_uiIntroStage] = pMount->GetGUID();
+                        pChampion->SetMountDisplayId(champData->uiMountDisplay);
+                        pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                        pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+                        m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
 
                         // Summon helper champions
                         float fX, fY, fZ;
@@ -844,7 +987,11 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                         {
                             pTrigger->GetNearPoint(pTrigger, fX, fY, fZ, 5.0f, angle - (float(M_PI) * 0.25f) + j * (float(M_PI) * 0.25f));
                             if (Creature* pHelper = pHerald->SummonCreature(champData->uiChampion, fX, fY, fZ, angle, TEMPSUMMON_DEAD_DESPAWN, 0s))
+                            {
+                                pHelper->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                                pHelper->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
                                 m_sArenaHelpersGuids[m_uiIntroStage].insert(pHelper->GetGUID());
+                            }
                         }
                     }
 
@@ -857,7 +1004,7 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                 }
                 else
                 {
-                    // Long intro: spawn at gate, move to center, then to home
+                    // Long intro: spawn at gate (mounted via creature_template_addon), move to center, then to home
                     float fX, fY, fZ;
 
                     // Open main gate
@@ -866,25 +1013,17 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                         HandleGameObject(gateItr->second, true);
                     m_events.ScheduleEvent(EVENT_GATE_RESET, 10s);
 
-                    if (Creature* pMount = pHerald->SummonCreature(champData->uiMount,
+                    if (Creature* pChampion = pHerald->SummonCreature(champData->uiEntry,
                         aIntroPositions[0][0], aIntroPositions[0][1], aIntroPositions[0][2], aIntroPositions[0][3], TEMPSUMMON_DEAD_DESPAWN, 0s))
                     {
-                        // Champion is auto-spawned as passenger by vehicle_template_accessory
-                        Creature* pChampion = nullptr;
-                        if (Vehicle* vehicle = pMount->GetVehicleKit())
-                            if (Unit* passenger = vehicle->GetPassenger(0))
-                                pChampion = passenger->ToCreature();
-
-                        if (pChampion)
-                        {
-                            pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
-                            m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
-                        }
-                        m_ArenaMountsGuids[m_uiIntroStage] = pMount->GetGUID();
+                        pChampion->SetMountDisplayId(champData->uiMountDisplay);
+                        pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                        pChampion->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+                        m_ArenaChampionsGuids[m_uiIntroStage] = pChampion->GetGUID();
 
                         // Herald announces champion
                         pHerald->AI()->Talk(champData->uiHeraldTalkGroup);
-                        pHerald->SetFacingToObject(pMount);
+                        pHerald->SetFacingToObject(pChampion);
 
                         switch (m_uiIntroStage)
                         {
@@ -893,26 +1032,28 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                             case 2: pHerald->CastSpell(pHerald, SPELL_ARGENT_SUMMON_CHAMPION_3, true); break;
                         }
 
-                        pMount->SetWalk(false);
-                        pCenterTrigger->GetClosePoint(fX, fY, fZ, pMount->GetCombatReach(), 2 * INTERACTION_DISTANCE,
-                            pCenterTrigger->GetAbsoluteAngle(pMount));
-                        pMount->GetMotionMaster()->MovePoint(POINT_ID_CENTER, fX, fY, fZ);
+                        pChampion->SetWalk(false);
+                        pCenterTrigger->GetClosePoint(fX, fY, fZ, pChampion->GetCombatReach(), 2 * INTERACTION_DISTANCE,
+                            pCenterTrigger->GetAbsoluteAngle(pChampion));
+                        pChampion->GetMotionMaster()->MovePoint(POINT_ID_CENTER, fX, fY, fZ);
 
-                        // Summon helper champions following mount
+                        // Summon helper champions following the champion
                         for (uint8 j = 0; j < 3; ++j)
                         {
                             if (Creature* pHelper = pHerald->SummonCreature(champData->uiChampion,
                                 aIntroPositions[j + 1][0], aIntroPositions[j + 1][1], aIntroPositions[j + 1][2], aIntroPositions[j + 1][3],
                                 TEMPSUMMON_DEAD_DESPAWN, 0s))
                             {
-                                pHelper->GetMotionMaster()->MoveFollow(pMount, pHelper->GetDistance(pMount), float(M_PI) / 2 + pHelper->GetAbsoluteAngle(pMount));
+                                pHelper->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                                pHelper->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+                                pHelper->GetMotionMaster()->MoveFollow(pChampion, pHelper->GetDistance(pChampion), float(M_PI) / 2 + pHelper->GetAbsoluteAngle(pChampion));
                                 m_sArenaHelpersGuids[m_uiIntroStage].insert(pHelper->GetGUID());
                             }
                         }
                     }
 
                     ++m_uiIntroStage;
-                    // Timer continues in InformChampionReachHome() via mount MovementInform
+                    // Timer continues in InformChampionReachHome() via champion MovementInform
                 }
             }
             else if (m_uiIntroStage == MAX_CHAMPIONS_ARENA)
@@ -940,24 +1081,39 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
             break;
         }
 
-        // ===== Grand Champions Phase 2 Summon =====
-        case EVENT_CHAMPIONS_SUMMON:
-        {
-            Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry);
-            if (!pHerald)
-                return;
-
-            for (uint8 i = 0; i < MAX_CHAMPIONS_ARENA; ++i)
-            {
-                uint8 uiIndex = m_vChampionsIndex[i];
-                const ChampionsData* champData = m_uiTeam == ALLIANCE ? &aHordeChampions[uiIndex] : &aAllianceChampions[uiIndex];
-
-                if (Creature* pChampion = pHerald->SummonCreature(champData->uiEntry,
-                    aChampsPositions[i][0], aChampsPositions[i][1], aChampsPositions[i][2], aChampsPositions[i][3], TEMPSUMMON_DEAD_DESPAWN, 0s))
-                    m_ArenaChampionsGuids[i] = pChampion->GetGUID();
-            }
+        // ===== Arena Next Wave =====
+        case EVENT_ARENA_NEXT_WAVE:
+            DoSendNextArenaWave();
             break;
-        }
+
+        // ===== Wipe Detection =====
+        case EVENT_WIPE_CHECK:
+            if (IsWipe())
+            {
+                if (m_uiArenaState == IN_PROGRESS)
+                {
+                    // Jousting wipe - reset to jousting phase
+                    SetData(DATA_ARENA_CHALLENGE, FAIL);
+                }
+                else if (m_uiArenaState == SPECIAL || m_uiArenaState == DONE)
+                {
+                    // Ground phase wipe (or transition wipe) - reset to ground phase only
+                    DoCleanupGroundPhaseOnWipe();
+                }
+                else if (GetBossState(BOSS_GRAND_CHAMPIONS) == IN_PROGRESS)
+                {
+                    // Ground combat wipe
+                    DoCleanupGroundPhaseOnWipe();
+                }
+            }
+            else
+                m_events.ScheduleEvent(EVENT_WIPE_CHECK, 2s);
+            break;
+
+        // ===== Grand Champions Phase 2 — summon fresh champions for ground phase =====
+        case EVENT_CHAMPIONS_SUMMON:
+            DoPrepareGroundPhase();
+            break;
 
         // ===== Grand Champions Complete =====
         case EVENT_CHAMPS_DONE_DELAY:

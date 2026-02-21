@@ -57,6 +57,8 @@ enum TCData
     ACTION_ARGENT_TRASH_DIED        = 105,  // an argent soldier died
     ACTION_HAD_WORSE_FAILED         = 106,  // ghoul explode hit a player
     ACTION_CHAMPIONS_IN_COMBAT      = 107,  // set all champions in combat
+    ACTION_ARENA_HELPER_DIED        = 108,  // a jousting helper (minion) died
+    ACTION_PREPARE_GROUND_PHASE     = 109,  // restart ground phase after wipe
 };
 
 // ===== GUID Data IDs for GetGuidData / SetGuidData =====
@@ -65,9 +67,6 @@ enum TCGuidData
     DATA_GUID_CHAMPION_1        = 50,
     DATA_GUID_CHAMPION_2        = 51,
     DATA_GUID_CHAMPION_3        = 52,
-    DATA_GUID_MOUNT_1           = 53,
-    DATA_GUID_MOUNT_2           = 54,
-    DATA_GUID_MOUNT_3           = 55,
     DATA_GUID_ANNOUNCER         = 60,
     DATA_GUID_MAIN_GATE         = 61,
     DATA_GUID_NORTH_GATE        = 62,
@@ -86,36 +85,26 @@ enum TCCreatureIds
 
     // Champions - Alliance
     NPC_ALLIANCE_WARRIOR            = 34705,    // Jacob Alerius
-    NPC_ALLIANCE_WARRIOR_MOUNT      = 35637,
     NPC_ALLIANCE_WARRIOR_CHAMPION   = 35328,    // Stormwind Champion
     NPC_ALLIANCE_MAGE               = 34702,    // Ambrose Boltspark
-    NPC_ALLIANCE_MAGE_MOUNT         = 35633,
     NPC_ALLIANCE_MAGE_CHAMPION      = 35331,    // Gnomeregan Champion
     NPC_ALLIANCE_SHAMAN             = 34701,    // Colosos
-    NPC_ALLIANCE_SHAMAN_MOUNT       = 35768,
     NPC_ALLIANCE_SHAMAN_CHAMPION    = 35330,    // Exodar Champion
     NPC_ALLIANCE_HUNTER             = 34657,    // Jaelyne Evensong
-    NPC_ALLIANCE_HUNTER_MOUNT       = 34658,
     NPC_ALLIANCE_HUNTER_CHAMPION    = 35332,    // Darnassus Champion
     NPC_ALLIANCE_ROGUE              = 34703,    // Lana Stouthammer
-    NPC_ALLIANCE_ROGUE_MOUNT        = 35636,
     NPC_ALLIANCE_ROGUE_CHAMPION     = 35329,    // Ironforge Champion
 
     // Champions - Horde
     NPC_HORDE_WARRIOR               = 35572,    // Mokra the Skullcrusher
-    NPC_HORDE_WARRIOR_MOUNT         = 35638,
     NPC_HORDE_WARRIOR_CHAMPION      = 35314,    // Orgrimmar Champion
     NPC_HORDE_MAGE                  = 35569,    // Eressea Dawnsinger
-    NPC_HORDE_MAGE_MOUNT            = 35635,
     NPC_HORDE_MAGE_CHAMPION         = 35326,    // Silvermoon Champion
     NPC_HORDE_SHAMAN                = 35571,    // Runok Wildmane
-    NPC_HORDE_SHAMAN_MOUNT          = 35640,
     NPC_HORDE_SHAMAN_CHAMPION       = 35325,    // Thunder Bluff Champion
     NPC_HORDE_HUNTER                = 35570,    // Zul'tore
-    NPC_HORDE_HUNTER_MOUNT          = 35641,
     NPC_HORDE_HUNTER_CHAMPION       = 35323,    // Sen'jin Champion
     NPC_HORDE_ROGUE                 = 35617,    // Deathstalker Visceri
-    NPC_HORDE_ROGUE_MOUNT           = 35634,
     NPC_HORDE_ROGUE_CHAMPION        = 35327,    // Undercity Champion
 
     // Spectators & triggers
@@ -162,6 +151,7 @@ enum TCGameObjects
 {
     GO_MAIN_GATE                    = 195647,
     GO_NORTH_GATE                   = 195650,   // Combat door
+    GO_EAST_GATE                    = 195648,   // Combat door
 
     GO_CHAMPIONS_LOOT               = 195709,
     GO_CHAMPIONS_LOOT_H             = 195710,
@@ -192,6 +182,7 @@ enum TCInstanceSpells
     SPELL_HERALD_FACE_DARK_KNIGHT   = 67482,
     SPELL_DEATHS_RESPITE_INTRO      = 66798,    // Intro spell (triggers 66797)
     SPELL_ARGENT_HERALD_FEIGN_DEATH = 66804,
+    SPELL_RIDE_ARGENT_VEHICLE       = 69692,
     SPELL_RIDE_VEHICLE_HARDCODED    = 46598,
     SPELL_SPECTATOR_FORCE_CHEER     = 66384,
     SPELL_SPECTATOR_FORCE_CHEER_2   = 66385,
@@ -219,8 +210,6 @@ enum TCConstants
 // ===== DoAction IDs for creature-to-creature communication =====
 enum TCDoActions
 {
-    ACTION_CHARGE_VEHICLE           = 1,    // Mount AI: execute charge
-    ACTION_CHARGE_DONE              = 2,    // Mount AI: charge cooldown done
     ACTION_PHASE_TRANSITION         = 3,    // Black Knight: finish phase transition
 };
 
@@ -312,9 +301,11 @@ enum PaletressTalk
 
 // ===== Position data =====
 
+static const float aArenaCenterPosition[3] = { 746.574f, 618.497f, 411.090f };
+
 static const float aHeraldPositions[4][4] =
 {
-    {745.606f, 619.705f, 411.172f, 4.66003f},  // Spawn position
+    {748.309f, 619.488f, 411.172f, 4.66003f},  // Spawn position
     {732.524f, 663.007f, 412.393f, 0.0f},       // Gate movement position
     {743.377f, 630.240f, 411.073f, 0.0f},       // Near center position
     {744.764f, 628.512f, 411.172f, 0.0f},       // Black knight intro position
@@ -346,26 +337,27 @@ static const float aKnightPositions[3][4] =
 
 struct ChampionsData
 {
-    uint32 uiEntry, uiMount, uiChampion, uiCrowdStalker;
+    uint32 uiEntry, uiChampion, uiCrowdStalker;
     uint32 uiHeraldTalkGroup;
+    uint32 uiMountDisplay;
 };
 
 static const ChampionsData aAllianceChampions[MAX_CHAMPIONS_AVAILABLE] =
 {
-    { NPC_ALLIANCE_WARRIOR, NPC_ALLIANCE_WARRIOR_MOUNT, NPC_ALLIANCE_WARRIOR_CHAMPION, NPC_SPECTATOR_HUMAN,     SAY_HERALD_CHAMPION_WARRIOR },
-    { NPC_ALLIANCE_MAGE,    NPC_ALLIANCE_MAGE_MOUNT,    NPC_ALLIANCE_MAGE_CHAMPION,    NPC_SPECTATOR_GNOME,     SAY_HERALD_CHAMPION_MAGE },
-    { NPC_ALLIANCE_SHAMAN,  NPC_ALLIANCE_SHAMAN_MOUNT,  NPC_ALLIANCE_SHAMAN_CHAMPION,  NPC_SPECTATOR_DRAENEI,   SAY_HERALD_CHAMPION_SHAMAN },
-    { NPC_ALLIANCE_HUNTER,  NPC_ALLIANCE_HUNTER_MOUNT,  NPC_ALLIANCE_HUNTER_CHAMPION,  NPC_SPECTATOR_NIGHT_ELF, SAY_HERALD_CHAMPION_HUNTER },
-    { NPC_ALLIANCE_ROGUE,   NPC_ALLIANCE_ROGUE_MOUNT,   NPC_ALLIANCE_ROGUE_CHAMPION,   NPC_SPECTATOR_DWARF,     SAY_HERALD_CHAMPION_ROGUE }
+    { NPC_ALLIANCE_WARRIOR, NPC_ALLIANCE_WARRIOR_CHAMPION, NPC_SPECTATOR_HUMAN,     SAY_HERALD_CHAMPION_WARRIOR, 29284 },
+    { NPC_ALLIANCE_MAGE,    NPC_ALLIANCE_MAGE_CHAMPION,    NPC_SPECTATOR_GNOME,     SAY_HERALD_CHAMPION_MAGE,    28571 },
+    { NPC_ALLIANCE_SHAMAN,  NPC_ALLIANCE_SHAMAN_CHAMPION,  NPC_SPECTATOR_DRAENEI,   SAY_HERALD_CHAMPION_SHAMAN,  29255 },
+    { NPC_ALLIANCE_HUNTER,  NPC_ALLIANCE_HUNTER_CHAMPION,  NPC_SPECTATOR_NIGHT_ELF, SAY_HERALD_CHAMPION_HUNTER,  9991  },
+    { NPC_ALLIANCE_ROGUE,   NPC_ALLIANCE_ROGUE_CHAMPION,   NPC_SPECTATOR_DWARF,     SAY_HERALD_CHAMPION_ROGUE,   2787  }
 };
 
 static const ChampionsData aHordeChampions[MAX_CHAMPIONS_AVAILABLE] =
 {
-    { NPC_HORDE_WARRIOR, NPC_HORDE_WARRIOR_MOUNT, NPC_HORDE_WARRIOR_CHAMPION, NPC_SPECTATOR_ORC,       SAY_HERALD_CHAMPION_WARRIOR },
-    { NPC_HORDE_MAGE,    NPC_HORDE_MAGE_MOUNT,    NPC_HORDE_MAGE_CHAMPION,    NPC_SPECTATOR_BLOOD_ELF, SAY_HERALD_CHAMPION_MAGE },
-    { NPC_HORDE_SHAMAN,  NPC_HORDE_SHAMAN_MOUNT,  NPC_HORDE_SHAMAN_CHAMPION,  NPC_SPECTATOR_TAUREN,    SAY_HERALD_CHAMPION_SHAMAN },
-    { NPC_HORDE_HUNTER,  NPC_HORDE_HUNTER_MOUNT,  NPC_HORDE_HUNTER_CHAMPION,  NPC_SPECTATOR_TROLL,     SAY_HERALD_CHAMPION_HUNTER },
-    { NPC_HORDE_ROGUE,   NPC_HORDE_ROGUE_MOUNT,   NPC_HORDE_ROGUE_CHAMPION,   NPC_SPECTATOR_UNDEAD,    SAY_HERALD_CHAMPION_ROGUE }
+    { NPC_HORDE_WARRIOR, NPC_HORDE_WARRIOR_CHAMPION, NPC_SPECTATOR_ORC,       SAY_HERALD_CHAMPION_WARRIOR, 29879 },
+    { NPC_HORDE_MAGE,    NPC_HORDE_MAGE_CHAMPION,    NPC_SPECTATOR_BLOOD_ELF, SAY_HERALD_CHAMPION_MAGE,    28607 },
+    { NPC_HORDE_SHAMAN,  NPC_HORDE_SHAMAN_CHAMPION,  NPC_SPECTATOR_TAUREN,    SAY_HERALD_CHAMPION_SHAMAN,  29880 },
+    { NPC_HORDE_HUNTER,  NPC_HORDE_HUNTER_CHAMPION,  NPC_SPECTATOR_TROLL,     SAY_HERALD_CHAMPION_HUNTER,  29261 },
+    { NPC_HORDE_ROGUE,   NPC_HORDE_ROGUE_CHAMPION,   NPC_SPECTATOR_UNDEAD,    SAY_HERALD_CHAMPION_ROGUE,   10718 }
 };
 
 // Mount spawn data
@@ -464,9 +456,14 @@ struct instance_trial_of_the_champion_InstanceMapScript : public InstanceScript
     void ReadSaveDataMore(std::istringstream& stream) override;
 
 private:
+    bool IsWipe();
+    void DoSetCombatDoorState(bool open);
     void DoSummonHeraldIfNeeded(Unit* pSummoner);
+    void DoSummonArenaMountsIfNeeded(Unit* pSummoner);
     void DoSendNextArenaWave();
     void DoCleanupArenaOnWipe();
+    void DoCleanupGroundPhaseOnWipe();
+    void DoPrepareGroundPhase();
     void DoPrepareArgentChallenge();
     void DoPrepareBlackKnight();
     void ProcessDialogueEvent(uint32 eventId);
@@ -491,7 +488,6 @@ private:
 
     // Champion GUIDs
     ObjectGuid m_ArenaChampionsGuids[MAX_CHAMPIONS_ARENA];
-    ObjectGuid m_ArenaMountsGuids[MAX_CHAMPIONS_ARENA];
 
     // Random champion order
     std::vector<uint8> m_vChampionsIndex;
@@ -514,6 +510,9 @@ private:
 
     // GO entry → GUID map
     std::unordered_map<uint32, ObjectGuid> m_mGoEntryGuidMap;
+
+    // Lance check timer
+    uint32 m_lanceCheckTimer;
 };
 
 // ===== AI Helper =====
