@@ -936,7 +936,7 @@ bool Guild::BankMoveItemData::HasWithdrawRights(MoveItemData* pOther) const
         {
             ObjectGuid::LowType depositorGuid = pTab->GetItemDepositor(m_slotId);
             // If depositor is unknown (0), treat as Vanilla (most restrictive)
-            uint8 depositorExpansion = depositorGuid ? GetGuildMemberEffectiveExpansion(depositorGuid) : EXPANSION_CLASSIC;
+            uint8 depositorExpansion = depositorGuid ? GetGuildMemberEffectiveExpansion(depositorGuid) : static_cast<uint8>(EXPANSION_CLASSIC);
             uint8 playerExpansion = m_pPlayer->GetEffectiveExpansion();
 
             // Player can only take items from depositors of same or lower expansion
