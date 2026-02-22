@@ -480,6 +480,14 @@ void instance_trial_of_the_champion_InstanceMapScript::SetData(uint32 uiType, ui
         case ACTION_HAD_WORSE_FAILED:
             m_bHadWorseAchiev = false;
             return;
+        case ACTION_CHAMPIONS_IN_COMBAT:
+        {
+            for (auto const& guid : m_ArenaChampionsGuids)
+                if (Creature* pChampion = instance->GetCreature(guid))
+                    if (pChampion->IsAlive())
+                        pChampion->AI()->DoZoneInCombat();
+            return;
+        }
         case ACTION_ARENA_HELPER_DIED:
         {
             if (m_uiArenaStage >= MAX_CHAMPIONS_ARENA)

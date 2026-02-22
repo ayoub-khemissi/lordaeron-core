@@ -1046,6 +1046,24 @@ public:
         void AttackStart(Unit* /*who*/) override { }
         void MoveInLineOfSight(Unit* /*who*/) override { }
 
+        void RemoveDefendAuras(Unit* target)
+        {
+            target->RemoveAurasDueToSpell(SPELL_DEFEND_DUMMY);
+            target->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_1);
+            target->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_2);
+            target->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_3);
+            target->RemoveAurasDueToSpell(63130);
+            target->RemoveAurasDueToSpell(63131);
+            target->RemoveAurasDueToSpell(63132);
+        }
+
+        void JustDied(Unit* /*killer*/) override
+        {
+            // Make champions re-acquire targets (include unmounted players)
+            if (InstanceScript* instance = me->GetInstanceScript())
+                instance->SetData(ACTION_CHAMPIONS_IN_COMBAT, 0);
+        }
+
         void UpdateAI(uint32 /*diff*/) override
         {
             if (_playerGuid.IsEmpty())
@@ -1056,33 +1074,24 @@ public:
             if (vehicle && vehicle->GetPassenger(0))
                 return;
 
-            // Player left - remove defend auras from player and vehicle
-            if (Player* player = ObjectAccessor::GetPlayer(*me, _playerGuid))
-            {
-                player->RemoveAurasDueToSpell(SPELL_DEFEND_DUMMY);
-                player->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_1);
-                player->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_2);
-                player->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_3);
-                player->RemoveAurasDueToSpell(63130);
-                player->RemoveAurasDueToSpell(63131);
-                player->RemoveAurasDueToSpell(63132);
-            }
-
-            me->RemoveAurasDueToSpell(SPELL_DEFEND_DUMMY);
-            me->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_1);
-            me->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_2);
-            me->RemoveAurasDueToSpell(SPELL_DEFEND_AURA_3);
-            me->RemoveAurasDueToSpell(63130);
-            me->RemoveAurasDueToSpell(63131);
-            me->RemoveAurasDueToSpell(63132);
-
+            // Player left - remove defend auras from vehicle
+            RemoveDefendAuras(me);
             _playerGuid = ObjectGuid::Empty;
         }
 
         void PassengerBoarded(Unit* who, int8 /*seatId*/, bool apply) override
         {
-            if (apply && who && who->GetTypeId() == TYPEID_PLAYER)
+            if (!who || who->GetTypeId() != TYPEID_PLAYER)
+                return;
+
+            if (apply)
                 _playerGuid = who->GetGUID();
+            else
+            {
+                // Player left (dismount or mount death) - remove defend auras from player
+                RemoveDefendAuras(who);
+                _playerGuid = ObjectGuid::Empty;
+            }
         }
     };
 
