@@ -282,8 +282,9 @@ bool instance_trial_of_the_champion_InstanceMapScript::SetBossState(uint32 id, E
 
                 // Spawn loot
                 if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
-                    pHerald->SummonGameObject(instance->IsHeroic() ? GO_CHAMPIONS_LOOT_H : GO_CHAMPIONS_LOOT,
-                        746.59f, 618.49f, 411.09f, 1.42f, QuaternionData(), 30min);
+                    if (GameObject* chest = pHerald->SummonGameObject(instance->IsHeroic() ? GO_CHAMPIONS_LOOT_H : GO_CHAMPIONS_LOOT,
+                        746.59f, 618.49f, 411.09f, 1.42f, QuaternionData(), 30min))
+                        chest->RemoveFlag(GO_FLAG_NOT_SELECTABLE);
 
                 // Start delayed dialogue
                 m_events.ScheduleEvent(EVENT_CHAMPS_DONE_DELAY, 7s);
@@ -309,12 +310,12 @@ bool instance_trial_of_the_champion_InstanceMapScript::SetBossState(uint32 id, E
                 // Spawn appropriate loot
                 if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
                 {
-                    if (m_uiGrandChampionEntry == NPC_EADRIC)
-                        pHerald->SummonGameObject(instance->IsHeroic() ? GO_EADRIC_LOOT_H : GO_EADRIC_LOOT,
-                            746.59f, 618.49f, 411.09f, 1.42f, QuaternionData(), 30min);
-                    else
-                        pHerald->SummonGameObject(instance->IsHeroic() ? GO_PALETRESS_LOOT_H : GO_PALETRESS_LOOT,
-                            746.59f, 618.49f, 411.09f, 1.42f, QuaternionData(), 30min);
+                    uint32 lootEntry = m_uiGrandChampionEntry == NPC_EADRIC
+                        ? (instance->IsHeroic() ? GO_EADRIC_LOOT_H : GO_EADRIC_LOOT)
+                        : (instance->IsHeroic() ? GO_PALETRESS_LOOT_H : GO_PALETRESS_LOOT);
+                    if (GameObject* chest = pHerald->SummonGameObject(lootEntry,
+                        746.59f, 618.49f, 411.09f, 1.42f, QuaternionData(), 30min))
+                        chest->RemoveFlag(GO_FLAG_NOT_SELECTABLE);
                 }
 
                 // Start argent completion dialogue
