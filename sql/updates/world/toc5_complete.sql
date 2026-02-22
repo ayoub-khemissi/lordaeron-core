@@ -333,7 +333,7 @@ REPLACE INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `posit
 (@OGUID+ 2, 195478, 650, 3, 1, 746.156, 549.464, 412.881, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstancePortal_Green_10Man_Heroic01
 (@OGUID+ 3, 195481, 650, 3, 1, 746.156, 549.464, 412.881, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstancePortal_Green_25Man_Heroic01
 (@OGUID+ 4, 195486, 650, 3, 1, 813.12, 617.59, 413.03, 3.22222, 0, 0, -0.999188, 0.0403038, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple_Skull01
-(@OGUID+ 5, 195477, 650, 3, 1, 813.13, 617.632, 413.039, 0, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple07
+(@OGUID+ 5, 195477, 650, 3, 1, 813.13, 617.632, 413.039, 3.14159, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple07
 (@OGUID+ 6, 195650, 650, 3, 1, 807.782, 618.023, 412.393, 3.19476, 0, 0, -0.999647, 0.0265786, 0, 255, 0), -- North Portcullis
 (@OGUID+ 7, 195649, 650, 3, 1, 685.573, 618.052, 412.393, 6.28135, 0, 0, -0.000911546, 1, 0, 255, 1), -- South Portcullis (closed by default)
 (@OGUID+ 8, 195648, 650, 3, 1, 746.64, 556.854, 412.393, 1.5708, 0, 0, 0.707107, 0.707107, 0, 255, 0), -- East Portcullis
@@ -522,6 +522,7 @@ DELETE FROM `vehicle_template_accessory` WHERE `entry` IN (
 
 -- ===== 19. Champion Cosmetic Mounts =====
 -- Champions now use cosmetic mounts instead of the vehicle system
+-- Normal entries
 DELETE FROM `creature_template_addon` WHERE `entry` IN (34705, 34702, 34701, 34657, 34703, 35572, 35569, 35571, 35570, 35617);
 INSERT INTO `creature_template_addon` (`entry`, `mount`) VALUES
 (34705, 29284),  -- Jacob Alerius (Alliance Warrior)
@@ -534,3 +535,20 @@ INSERT INTO `creature_template_addon` (`entry`, `mount`) VALUES
 (35571, 29880),  -- Runok Wildmane (Horde Shaman)
 (35570, 29261),  -- Zul'tore (Horde Hunter)
 (35617, 10718);  -- Deathstalker Visceri (Horde Rogue)
+
+-- Heroic difficulty entries (difficulty_entry_1) - must match normal mount displays
+DELETE FROM `creature_template_addon` WHERE `entry` IN (36088, 36082, 36083, 36086, 36087, 36089, 36085, 36090, 36091, 36084);
+INSERT INTO `creature_template_addon` (`entry`, `mount`) VALUES
+(36088, 29284),  -- Jacob Alerius H
+(36082, 28571),  -- Ambrose Boltspark H
+(36083, 29255),  -- Colosos H
+(36086, 9991),   -- Jaelyne Evensong H
+(36087, 2787),   -- Lana Stouthammer H
+(36089, 29879),  -- Mokra the Skullcrusher H
+(36085, 28607),  -- Eressea Dawnsinger H
+(36090, 29880),  -- Runok Wildmane H
+(36091, 29261),  -- Zul'tore H
+(36084, 10718);  -- Deathstalker Visceri H
+
+-- Heroic difficulty entries: add DUNGEON_BOSS flag (0x10000) to flags_extra
+UPDATE `creature_template` SET `flags_extra`=(`flags_extra` | 0x10000) WHERE `entry` IN (36088, 36082, 36083, 36086, 36087, 36089, 36085, 36090, 36091, 36084);
