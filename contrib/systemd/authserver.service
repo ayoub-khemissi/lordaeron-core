@@ -1,0 +1,18 @@
+[Unit]
+Description=Lordaeron AuthServer
+After=mysql.service
+Requires=mysql.service
+
+[Service]
+Type=simple
+User=trinity
+Group=trinity
+WorkingDirectory=/home/trinity/server/bin
+ExecStart=/home/trinity/server/bin/authserver
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

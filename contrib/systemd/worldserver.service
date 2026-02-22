@@ -1,0 +1,19 @@
+[Unit]
+Description=Lordaeron WorldServer
+After=authserver.service
+Requires=mysql.service
+
+[Service]
+Type=simple
+User=trinity
+Group=trinity
+WorkingDirectory=/home/trinity/server/bin
+ExecStart=/home/trinity/server/bin/worldserver
+Restart=on-failure
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target
