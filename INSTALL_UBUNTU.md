@@ -65,6 +65,7 @@ cd build
 ```bash
 cmake ../ \
   -DCMAKE_INSTALL_PREFIX=$HOME/server \
+  -DCONF_DIR=$HOME/server/etc \
   -DCMAKE_C_COMPILER=/usr/bin/clang \
   -DCMAKE_CXX_COMPILER=/usr/bin/clang++ \
   -DTOOLS=1 \
@@ -78,6 +79,7 @@ Notable options:
 | Option | Value | Description |
 |---|---|---|
 | `CMAKE_INSTALL_PREFIX` | `$HOME/server` | Installation directory |
+| `CONF_DIR` | `$HOME/server/etc` | Configuration files directory |
 | `TOOLS` | `1` | Build extraction tools (maps, vmaps, mmaps) |
 | `SCRIPTS` | `static` | Include all game scripts |
 | `CMAKE_BUILD_TYPE` | `RelWithDebInfo` | Default mode (release + debug info) |
