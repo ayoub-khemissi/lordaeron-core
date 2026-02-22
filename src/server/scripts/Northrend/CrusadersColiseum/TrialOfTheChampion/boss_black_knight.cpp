@@ -84,12 +84,13 @@ public:
 
     struct boss_black_knightAI : public ScriptedAI
     {
-        boss_black_knightAI(Creature* creature) : ScriptedAI(creature)
+        boss_black_knightAI(Creature* creature) : ScriptedAI(creature), _summons(creature)
         {
             _instance = creature->GetInstanceScript();
         }
 
         InstanceScript* _instance;
+        SummonList _summons;
 
         uint8 _phase;
         uint8 _nextPhase;
@@ -126,6 +127,7 @@ public:
             me->SetStandState(UNIT_STAND_STATE_STAND);
             me->SetDisplayId(me->GetNativeDisplayId());
 
+            _summons.DespawnAll();
         }
 
         void JustEngagedWith(Unit* /*who*/) override
@@ -173,6 +175,8 @@ public:
 
         void JustSummoned(Creature* summoned) override
         {
+            _summons.Summon(summoned);
+
             if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
                 summoned->AI()->AttackStart(target);
 

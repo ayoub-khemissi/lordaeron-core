@@ -229,7 +229,9 @@ public:
 
     struct boss_paletressAI : public argent_champion_commonAI
     {
-        boss_paletressAI(Creature* creature) : argent_champion_commonAI(creature) { Reset(); }
+        boss_paletressAI(Creature* creature) : argent_champion_commonAI(creature), _summons(creature) { Reset(); }
+
+        SummonList _summons;
 
         uint32 _holySmiteTimer;
         uint32 _holyFireTimer;
@@ -259,9 +261,7 @@ public:
             _confessCast        = false;
             _summonedMemory     = false;
 
-            if (Creature* pMemory = ObjectAccessor::GetCreature(*me, _memoryGuid))
-                if (pMemory->IsAlive())
-                    pMemory->DespawnOrUnsummon();
+            _summons.DespawnAll();
         }
 
         void JustEngagedWith(Unit* who) override
@@ -285,6 +285,7 @@ public:
 
         void JustSummoned(Creature* summoned) override
         {
+            _summons.Summon(summoned);
             summoned->CastSpell(summoned, SPELL_SHADOWFORM, true);
             summoned->CastSpell(summoned, SPELL_MEMORY_SPAWN_EFFECT, true);
             summoned->AI()->DoZoneInCombat();
