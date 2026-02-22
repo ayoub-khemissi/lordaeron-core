@@ -30,7 +30,9 @@ UPDATE `creature_template` SET `ScriptName`='npc_trial_grand_champion' WHERE `en
 UPDATE `creature_template` SET `ScriptName`='boss_eadric' WHERE `entry`=35119;
 UPDATE `creature_template` SET `ScriptName`='boss_paletress' WHERE `entry`=34928;
 UPDATE `creature_template` SET `ScriptName`='npc_memory' WHERE `entry` IN (35052, 35041, 35033, 35046, 35043, 35047, 35044, 35039, 35034, 35049, 35030, 34942, 35050, 35042, 35045, 35037, 35031, 35038, 35029, 35048, 35032, 35028, 35040, 35036, 35051);
-UPDATE `creature_template` SET `ScriptName`='npc_argent_soldier' WHERE `entry` IN (35309, 35305, 35307);
+UPDATE `creature_template` SET `ScriptName` = 'npc_argent_lightwielder' WHERE `entry` = 35309;
+UPDATE `creature_template` SET `ScriptName` = 'npc_argent_monk'         WHERE `entry` = 35305;
+UPDATE `creature_template` SET `ScriptName` = 'npc_argent_priestess'    WHERE `entry` = 35307;
 
 -- Black Knight (boss_black_knight.cpp)
 UPDATE `creature_template` SET `ScriptName`='boss_black_knight' WHERE `entry`=35451;
@@ -44,6 +46,9 @@ UPDATE `creature_template` SET `VehicleId`=0 WHERE `entry` IN (35314, 35323, 353
 
 -- Scale fixes for coliseum spectators
 UPDATE `creature_template` SET `scale`=1 WHERE `entry` IN (34871, 34869, 34856, 34975, 34970, 34868, 34870, 34977, 34974, 34966, 34979, 34860, 34859, 34861, 34857, 34858);
+
+-- Fix Eadric and Paletress walk/run speed
+UPDATE `creature_template` SET `speed_walk` = 1.8, `speed_run` = 2 WHERE `entry` IN (35119, 34928);
 
 -- ===== 4. Creature Template Spell (vehicle action bar spells for Argent mounts) =====
 -- MaNGOS uses creature_template.spell1-4, TrinityCore uses creature_template_spell table
@@ -323,27 +328,27 @@ SET @OGUID := 77245;
 
 DELETE FROM `gameobject` WHERE `map`=650;
 REPLACE INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `rotation0`, `rotation1`, `rotation2`, `rotation3`, `spawntimesecs`, `animprogress`, `state`) VALUES
-(@OGUID+ 0, 195479, 650, 3, 1, 746.1556, 549.4642, 412.8809, 4.71239, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Doodad_InstancePortal_Green_10Man01
-(@OGUID+ 1, 195480, 650, 3, 1, 746.1556, 549.4642, 412.8809, 1.570796, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Doodad_InstancePortal_Green_25Man01
-(@OGUID+ 2, 195478, 650, 3, 1, 746.1556, 549.4642, 412.8809, 1.570796, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Doodad_InstancePortal_Green_10Man_Heroic01
-(@OGUID+ 3, 195481, 650, 3, 1, 746.1556, 549.4642, 412.8809, 1.570796, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Doodad_InstancePortal_Green_25Man_Heroic01
-(@OGUID+ 4, 195486, 650, 3, 1, 813.1198, 617.5898, 413.0305, 0, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple_Skull01
-(@OGUID+ 5, 195477, 650, 3, 1, 813.1296, 617.6323, 413.0386, 0, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple07
-(@OGUID+ 6, 195650, 650, 3, 1, 804.6328, 618.0554, 412.6763, 3.141593, 0, 0, 0.7071069, 0.7071066, 86400, 255, 0), -- North Portcullis
-(@OGUID+ 7, 195649, 650, 3, 1, 688.7698, 618.0554, 412.704, 3.141593, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- South Portcullis
-(@OGUID+ 8, 195648, 650, 3, 1, 746.6458, 560.1208, 412.704, 1.570796, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- East Portcullis
-(@OGUID+ 9, 195647, 650, 3, 1, 746.6976, 677.4688, 412.3391, 1.570796, 0, 0, 0.7071069, 0.7071066, 86400, 255, 1), -- Main Gate
-(@OGUID+10, 196398, 650, 3, 1, 784.533, 660.2379, 412.3891, 5.567601, 0, 0, 0, 1, 86400, 255, 1), -- Lance Rack
-(@OGUID+11, 196398, 650, 3, 1, 801.6632, 624.8055, 412.3444, 4.939284, 0, 0, 0, 1, 86400, 255, 1), -- Lance Rack
-(@OGUID+12, 195485, 650, 3, 1, 844.6845, 623.4078, 159.1088, 0, 0, 0, 0.7071069, 0.7071066, 86400, 255, 0), -- Web Door
-(@OGUID+13, 196398, 650, 3, 1, 692.1268, 610.5746, 412.3466, 1.850049, 0, 0, 0, 1, 86400, 255, 1), -- Lance Rack
-(@OGUID+14, 196398, 650, 3, 1, 710.3246, 660.7083, 412.3868, 0.6981314, 0, 0, 0, 1, 86400, 255, 1), -- Lance Rack
-(@OGUID+15, 195709, 650, 1, 1, 744.7205, 618.3073, 411.0891, 1.53589, 0, 0, 0, 1, -86400, 255, 1), -- Champion''s Cache (Normal)
-(@OGUID+16, 195374, 650, 1, 1, 748.7604, 618.309, 411.0891, 1.588249, 0, 0, 0, 1, -86400, 255, 1), -- Eadric''s Cache (Normal)
-(@OGUID+17, 195323, 650, 1, 1, 748.7778, 618.3524, 411.0891, 1.570796, 0, 0, 0, 1, -86400, 255, 1), -- Confessor''s Cache (Normal)
-(@OGUID+18, 195710, 650, 2, 1, 744.7205, 618.3073, 411.0891, 1.53589, 0, 0, 0, 1, -86400, 255, 1), -- Champion''s Cache (Heroic)
-(@OGUID+19, 195375, 650, 2, 1, 748.7604, 618.309, 411.0891, 1.588249, 0, 0, 0, 1, -86400, 255, 1), -- Eadric''s Cache (Heroic)
-(@OGUID+20, 195324, 650, 2, 1, 748.7778, 618.3524, 411.0891, 1.570796, 0, 0, 0, 1, -86400, 255, 1); -- Confessor''s Cache (Heroic)
+(@OGUID+ 0, 195479, 650, 3, 1, 746.156, 549.464, 412.881, 4.71239, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstancePortal_Green_10Man01
+(@OGUID+ 1, 195480, 650, 3, 1, 746.156, 549.464, 412.881, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstancePortal_Green_25Man01
+(@OGUID+ 2, 195478, 650, 3, 1, 746.156, 549.464, 412.881, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstancePortal_Green_10Man_Heroic01
+(@OGUID+ 3, 195481, 650, 3, 1, 746.156, 549.464, 412.881, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstancePortal_Green_25Man_Heroic01
+(@OGUID+ 4, 195486, 650, 3, 1, 813.12, 617.59, 413.03, 3.22222, 0, 0, -0.999188, 0.0403038, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple_Skull01
+(@OGUID+ 5, 195477, 650, 3, 1, 813.13, 617.632, 413.039, 0, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple07
+(@OGUID+ 6, 195650, 650, 3, 1, 807.782, 618.023, 412.393, 3.19476, 0, 0, -0.999647, 0.0265786, 0, 255, 0), -- North Portcullis
+(@OGUID+ 7, 195649, 650, 3, 1, 685.573, 618.052, 412.393, 6.28135, 0, 0, -0.000911546, 1, 0, 255, 0), -- South Portcullis
+(@OGUID+ 8, 195648, 650, 3, 1, 746.64, 556.854, 412.393, 1.5708, 0, 0, 0.707107, 0.707107, 0, 255, 0), -- East Portcullis
+(@OGUID+ 9, 195647, 650, 3, 1, 746.698, 677.469, 412.339, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Main Gate
+(@OGUID+10, 196398, 650, 3, 1, 784.533, 660.238, 412.389, 5.52737, 0, 0, -0.368974, 0.92944, 86400, 255, 1), -- Lance Rack
+(@OGUID+11, 196398, 650, 3, 1, 801.663, 624.805, 412.344, 4.82445, 0, 0, -0.666398, 0.745597, 86400, 255, 1), -- Lance Rack
+(@OGUID+12, 195485, 650, 3, 1, 844.685, 623.408, 159.109, 0, 0, 0, 0.707107, 0.707107, 86400, 255, 0), -- Web Door
+(@OGUID+13, 196398, 650, 3, 1, 692.127, 610.575, 412.347, 1.76924, 0, 0, -0.773675, -0.633583, 86400, 255, 1), -- Lance Rack
+(@OGUID+14, 196398, 650, 3, 1, 710.325, 660.708, 412.387, 0.563658, 0, 0, -0.278113, -0.960548, 86400, 255, 1), -- Lance Rack
+(@OGUID+15, 195709, 650, 1, 1, 744.721, 618.307, 411.089, 1.53589, 0, 0, 0, 1, -86400, 255, 1), -- Champion''s Cache (Normal)
+(@OGUID+16, 195374, 650, 1, 1, 748.76, 618.309, 411.089, 1.58825, 0, 0, 0, 1, -86400, 255, 1), -- Eadric''s Cache (Normal)
+(@OGUID+17, 195323, 650, 1, 1, 748.778, 618.352, 411.089, 1.5708, 0, 0, 0, 1, -86400, 255, 1), -- Confessor''s Cache (Normal)
+(@OGUID+18, 195710, 650, 2, 1, 744.721, 618.307, 411.089, 1.53589, 0, 0, 0, 1, -86400, 255, 1), -- Champion''s Cache (Heroic)
+(@OGUID+19, 195375, 650, 2, 1, 748.76, 618.309, 411.089, 1.58825, 0, 0, 0, 1, -86400, 255, 1), -- Eadric''s Cache (Heroic)
+(@OGUID+20, 195324, 650, 2, 1, 748.778, 618.352, 411.089, 1.5708, 0, 0, 0, 1, -86400, 255, 1); -- Confessor''s Cache (Heroic)
 
 -- ===== 9. Creature Text =====
 -- Converted from MaNGOS script_texts to TrinityCore creature_text format.
@@ -438,11 +443,11 @@ REPLACE INTO `creature_text` (`CreatureID`, `GroupID`, `ID`, `Text`, `Type`, `La
 
 -- ===== 10. Spell Script Names =====
 -- MaNGOS uses spell_scripts, TrinityCore uses spell_script_names
-DELETE FROM `spell_script_names` WHERE `spell_id` IN (67693, 67751, 67729);
+DELETE FROM `spell_script_names` WHERE `spell_id` IN (67693, 67751, 67830);
 REPLACE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (67693, 'spell_black_knight_res'),
 (67751, 'spell_black_knight_ghoul_explode'),
-(67729, 'spell_black_knight_ghoul_explode_risen_ghoul');
+(67830, 'spell_toc5_ride_mount');
 
 -- ===== 11. Achievement Criteria Data =====
 DELETE FROM `achievement_criteria_data` WHERE `criteria_id` IN (11858, 11789) AND `type` = 12;
@@ -474,3 +479,29 @@ INSERT INTO `creature_template_spell` (`CreatureID`, `Index`, `Spell`, `Verified
 DELETE FROM `npc_spellclick_spells` WHERE `npc_entry` = 36557;
 INSERT INTO `npc_spellclick_spells` (`npc_entry`, `spell_id`, `cast_flags`, `user_type`) VALUES
 (36557, 67830, 1, 0);
+
+-- ===== 16. Remove old spellclick conditions for ToC5 mounts =====
+-- Lance check is now handled via SpellScript (spell_toc5_ride_mount)
+DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 18 AND `SourceGroup` IN (36557, 36558) AND `SourceEntry` = 67830;
+
+-- ===== 17. Vehicle Template Accessory Removal =====
+-- Champions are now spawned independently and board their mounts via script
+DELETE FROM `vehicle_template_accessory` WHERE `entry` IN (
+  35637, 35633, 35768, 34658, 35636,  -- Alliance mounts
+  35638, 35635, 35640, 35641, 35634   -- Horde mounts
+);
+
+-- ===== 18. Champion Cosmetic Mounts =====
+-- Champions now use cosmetic mounts instead of the vehicle system
+DELETE FROM `creature_template_addon` WHERE `entry` IN (34705, 34702, 34701, 34657, 34703, 35572, 35569, 35571, 35570, 35617);
+INSERT INTO `creature_template_addon` (`entry`, `mount`) VALUES
+(34705, 29284),  -- Jacob Alerius (Alliance Warrior)
+(34702, 28571),  -- Ambrose Boltspark (Alliance Mage)
+(34701, 29255),  -- Colosos (Alliance Shaman)
+(34657, 9991),   -- Jaelyne Evensong (Alliance Hunter)
+(34703, 2787),   -- Lana Stouthammer (Alliance Rogue)
+(35572, 29879),  -- Mokra the Skullcrusher (Horde Warrior)
+(35569, 28607),  -- Eressea Dawnsinger (Horde Mage)
+(35571, 29880),  -- Runok Wildmane (Horde Shaman)
+(35570, 29261),  -- Zul'tore (Horde Hunter)
+(35617, 10718);  -- Deathstalker Visceri (Horde Rogue)
