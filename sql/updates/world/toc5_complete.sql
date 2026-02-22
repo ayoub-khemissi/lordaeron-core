@@ -428,11 +428,19 @@ REPLACE INTO `creature_text` (`CreatureID`, `GroupID`, `ID`, `Text`, `Type`, `La
 
 -- ===== 10. Spell Script Names =====
 -- MaNGOS uses spell_scripts, TrinityCore uses spell_script_names
-DELETE FROM `spell_script_names` WHERE `spell_id` IN (67693, 67751, 67830);
+DELETE FROM `spell_script_names` WHERE `spell_id` IN (67693, 67751, 67830, 67729, 67754, 67889);
+-- Fix pre-existing wrong ScriptName 'spell_black_knight_ghoul_explode_risen_ghoul' for 67729/67754/67889
 REPLACE INTO `spell_script_names` (`spell_id`, `ScriptName`) VALUES
 (67693, 'spell_black_knight_res'),
 (67751, 'spell_black_knight_ghoul_explode'),
+(67729, 'spell_black_knight_ghoul_explode'),
+(67754, 'spell_black_knight_ghoul_explode'),
+(67889, 'spell_black_knight_ghoul_explode'),
 (67830, 'spell_toc5_ride_mount');
+
+-- ===== 10b. Remove non-existent ScriptName from Tournament Grounds mounts =====
+-- 'generic_vehicleAI_toc5' does not exist in the core
+UPDATE `creature_template` SET `ScriptName`='' WHERE `entry` IN (33217, 33316, 33317, 33318, 33319, 33320, 33321, 33322, 33323, 33324) AND `ScriptName`='generic_vehicleAI_toc5';
 
 -- ===== 11. Achievement Criteria Data =====
 DELETE FROM `achievement_criteria_data` WHERE `criteria_id` IN (11858, 11789) AND `type` = 12;
