@@ -260,6 +260,8 @@ Settings applied by this file:
 | Raid reset | ~2 days | Instead of 7 days |
 | Cross-faction | Enabled | Group, guild, auction house, trade |
 | Auto-learn spells | Enabled | Class spells learned automatically on level up |
+| AoE Loot | Enabled (30yd) | Loot all nearby corpses at once |
+| Transmogrification | Enabled | Free cost, 10 saved sets, mixed inventory types allowed |
 
 ---
 

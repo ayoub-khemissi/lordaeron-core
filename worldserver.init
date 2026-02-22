@@ -57,3 +57,22 @@ AllowTwoSide.Trade = 1
 # Players automatically learn class spells on level up
 # --------------------------------------------------
 AutoLearnTrainerSpells = 1
+
+# --------------------------------------------------
+# AOE LOOT
+# Loot all nearby corpses at once within range
+# --------------------------------------------------
+AoeLoot.Enable = 1
+AoeLoot.Range = 30.0
+
+# --------------------------------------------------
+# TRANSMOGRIFICATION
+# --------------------------------------------------
+Transmogrification.EnableTransmogInfo = 1
+Transmogrification.EnableSets = 1
+Transmogrification.MaxSets = 10
+Transmogrification.AllowMixedArmorTypes = 0
+Transmogrification.AllowMixedWeaponTypes = 0
+Transmogrification.AllowMixedInventoryTypes = 1
+Transmogrification.CopperCost = 0
+Transmogrification.SetCopperCost = 0
