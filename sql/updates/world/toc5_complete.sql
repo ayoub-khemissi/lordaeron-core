@@ -51,6 +51,9 @@ UPDATE `creature_template` SET `VehicleId`=0 WHERE `entry` IN (35314, 35323, 353
 -- Scale fixes for coliseum spectators
 UPDATE `creature_template` SET `scale`=1 WHERE `entry` IN (34871, 34869, 34856, 34975, 34970, 34868, 34870, 34977, 34974, 34966, 34979, 34860, 34859, 34861, 34857, 34858);
 
+-- Battleworg Alliance (36559) should match Warhorse Horde (35644) flags: IMMUNE_TO_PC
+UPDATE `creature_template` SET `unit_flags`=(`unit_flags` | 0x100) WHERE `entry`=36559;
+
 -- Fix Eadric and Paletress walk/run speed
 UPDATE `creature_template` SET `speed_walk` = 1.8, `speed_run` = 2 WHERE `entry` IN (35119, 34928);
 
@@ -106,25 +109,10 @@ UPDATE `creature_model_info` SET `BoundingRadius`=0.208, `CombatReach`=1.5 WHERE
 SET @CGUID := 143275;
 
 DELETE FROM `creature` WHERE `map`=650;
+-- Arena mounts (35644, 36557, 36558, 36559) are NOT DB-spawned; they are summoned dynamically
+-- by DoSummonArenaMountsIfNeeded() based on the player's faction.
+
 REPLACE INTO `creature` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `position_x`, `position_y`, `position_z`, `orientation`, `spawntimesecs`, `wander_distance`, `MovementType`) VALUES
-(@CGUID+  0, 35644, 650, 3, 1, 702.967, 587.6493, 412.4754, 0.6108652, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+  1, 35644, 650, 3, 1, 774.8976, 573.7361, 412.4752, 2.146755, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+  2, 35644, 650, 3, 1, 787.4393, 584.9688, 412.4759, 2.478368, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+  3, 35644, 650, 3, 1, 712.5938, 576.2604, 412.4758, 0.8901179, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+  4, 35644, 650, 3, 1, 720.5695, 571.2847, 412.4749, 1.064651, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+  5, 36558, 650, 3, 1, 790.1771, 589.059, 412.4753, 2.565634, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+  6, 36558, 650, 3, 1, 716.6649, 573.4948, 412.4753, 0.9773844, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+  7, 36558, 650, 3, 1, 770.4861, 571.5521, 412.4746, 2.059489, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+  8, 36558, 650, 3, 1, 700.5313, 591.9271, 412.4749, 0.5235988, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+  9, 36558, 650, 3, 1, 778.7413, 576.0486, 412.4756, 2.234021, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+ 10, 36558, 650, 3, 1, 705.4965, 583.9445, 412.4759, 0.6981317, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+ 11, 35644, 650, 3, 1, 699.9427, 643.3698, 412.4744, 5.77704, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+ 12, 35644, 650, 3, 1, 790.4896, 646.533, 412.4745, 3.717551, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+ 13, 35644, 650, 3, 1, 777.5643, 660.3004, 412.4669, 4.34587, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+ 14, 35644, 650, 3, 1, 704.9427, 651.3299, 412.4751, 5.602507, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+ 15, 35644, 650, 3, 1, 793.0087, 592.6667, 412.4749, 2.6529, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+ 16, 35644, 650, 3, 1, 768.2552, 661.6059, 412.4703, 4.555309, 7200, 0, 0), -- Argent Warhorse
-(@CGUID+ 17, 35644, 650, 3, 1, 722.3629, 660.7448, 412.4681, 4.834562, 7200, 0, 0), -- Argent Warhorse
 (@CGUID+ 18, 35016, 650, 3, 1, 748.8837, 616.4618, 411.1738, 0, 7200, 0, 0), -- [ph] Argent Raid Spectator - Generic Bunny
 (@CGUID+ 19, 35016, 650, 3, 1, 782.1198, 583.2101, 412.4743, 0, 7200, 0, 0), -- [ph] Argent Raid Spectator - Generic Bunny
 (@CGUID+ 20, 35016, 650, 3, 1, 746.5243, 615.868, 411.1725, 0, 7200, 0, 0), -- [ph] Argent Raid Spectator - Generic Bunny
@@ -135,10 +123,6 @@ REPLACE INTO `creature` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `positio
 (@CGUID+ 25, 35016, 650, 3, 1, 703.8837, 596.6007, 412.4742, 0, 7200, 0, 0), -- [ph] Argent Raid Spectator - Generic Bunny
 (@CGUID+ 26, 35016, 650, 3, 1, 714.4861, 581.7222, 412.476, 0, 7200, 0, 0), -- [ph] Argent Raid Spectator - Generic Bunny
 (@CGUID+ 27, 22515, 650, 3, 1, 746.9045, 618.2813, 411.1724, 0, 7200, 0, 0), -- World Trigger
-(@CGUID+ 28, 35004, 650, 3, 1, 748.309, 619.4879, 411.1724, 4.712389, 7200, 0, 0), -- Jaeren Sunsworn (Herald)
-(@CGUID+ 29, 36558, 650, 3, 1, 717.4427, 660.6458, 412.4669, 4.921828, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+ 30, 36558, 650, 3, 1, 702.1649, 647.2674, 412.4749, 5.689773, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+ 31, 36558, 650, 3, 1, 726.8264, 661.2014, 412.4716, 4.660029, 7200, 0, 0), -- Argent Battleworg
 (@CGUID+ 32, 34977, 650, 3, 1, 726.3802, 557.1511, 436.9785, 1.256637, 7200, 0, 0), -- Argent Crusade Spectator
 (@CGUID+ 33, 35016, 650, 3, 1, 712.4132, 653.9305, 412.4742, 0, 7200, 0, 0), -- [ph] Argent Raid Spectator - Generic Bunny
 (@CGUID+ 34, 34970, 650, 3, 1, 757.9983, 559.7309, 435.5007, 1.466077, 7200, 0, 0), -- Argent Crusade Spectator
@@ -160,9 +144,6 @@ REPLACE INTO `creature` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `positio
 (@CGUID+ 50, 34975, 650, 3, 1, 775.7483, 564.5851, 435.5041, 2.164208, 7200, 0, 0), -- Argent Crusade Spectator
 (@CGUID+ 51, 34966, 650, 3, 1, 725.6614, 560.8351, 435.5034, 1.239184, 7200, 0, 0), -- Argent Crusade Spectator
 (@CGUID+ 52, 34977, 650, 3, 1, 734.4114, 560.158, 435.501, 1.37881, 7200, 0, 0), -- Argent Crusade Spectator
-(@CGUID+ 53, 36558, 650, 3, 1, 788.0156, 650.7882, 412.4749, 3.804818, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+ 54, 36558, 650, 3, 1, 773.0972, 660.7327, 412.4673, 4.45059, 7200, 0, 0), -- Argent Battleworg
-(@CGUID+ 55, 36558, 650, 3, 1, 793.0521, 642.8507, 412.4742, 3.630285, 7200, 0, 0), -- Argent Battleworg
 (@CGUID+ 56, 34994, 650, 3, 1, 686.6632, 614.5608, 435.4849, 6.230825, 7200, 0, 0), -- Thrall
 (@CGUID+ 57, 34977, 650, 3, 1, 730.9983, 552.7188, 438.8121, 1.343904, 7200, 0, 0), -- Argent Crusade Spectator
 (@CGUID+ 58, 34974, 650, 3, 1, 787.5018, 568.9618, 436.9922, 2.286381, 7200, 0, 0), -- Argent Crusade Spectator
