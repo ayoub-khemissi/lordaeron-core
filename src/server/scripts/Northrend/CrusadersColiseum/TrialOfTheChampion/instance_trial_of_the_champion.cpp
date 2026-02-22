@@ -24,6 +24,7 @@
 #include "Map.h"
 #include "MotionMaster.h"
 #include "Player.h"
+#include "SpellAuras.h"
 #include "TemporarySummon.h"
 #include "Containers.h"
 #include "trial_of_the_champion.h"
@@ -666,6 +667,10 @@ void instance_trial_of_the_champion_InstanceMapScript::DoSendNextArenaWave()
         {
             if (Creature* pChampion = instance->GetCreature(m_ArenaChampionsGuids[i]))
             {
+                // Apply 3 stacks of Defend (visual + damage reduction)
+                if (Aura* aura = pChampion->AddAura(62719, pChampion))
+                    aura->SetStackAmount(3);
+
                 pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
                 pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
                 pChampion->AI()->DoZoneInCombat();

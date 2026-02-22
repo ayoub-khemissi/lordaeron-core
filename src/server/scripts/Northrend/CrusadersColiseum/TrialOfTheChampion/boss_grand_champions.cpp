@@ -28,7 +28,7 @@
 
 enum CommonSpells
 {
-    SPELL_DEFEND_DUMMY              = 64101,        // triggers 62719, 64192
+    SPELL_DEFEND_DUMMY              = 64101,        // triggers 64192
     SPELL_SHIELD_BREAKER            = 68504,
     SPELL_CHAMPION_CHARGE           = 63010,
     SPELL_FULL_HEAL                 = 43979,
