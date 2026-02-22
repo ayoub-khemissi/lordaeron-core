@@ -125,7 +125,7 @@ public:
             me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
             me->SetStandState(UNIT_STAND_STATE_STAND);
             me->SetDisplayId(me->GetNativeDisplayId());
-            me->LoadEquipment(0, true);
+
         }
 
         void JustEngagedWith(Unit* /*who*/) override
