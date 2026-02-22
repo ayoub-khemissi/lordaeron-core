@@ -10,7 +10,7 @@ Group=trinity
 WorkingDirectory=/home/trinity/server/bin
 ExecStart=/home/trinity/server/bin/authserver
 Restart=on-failure
-RestartSec=10
+RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
