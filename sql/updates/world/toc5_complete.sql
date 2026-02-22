@@ -41,7 +41,7 @@ UPDATE `creature_template` SET `ScriptName` = 'npc_argent_priestess'    WHERE `e
 -- Black Knight (boss_black_knight.cpp)
 UPDATE `creature_template` SET `ScriptName`='boss_black_knight' WHERE `entry`=35451;
 UPDATE `creature_template` SET `ScriptName`='npc_black_knight_ghoul' WHERE `entry` IN (35545, 35564, 35590);
-UPDATE `creature_template` SET `ScriptName`='npc_black_knight_gryphon', `unit_flags`=(`unit_flags` | 0x302) WHERE `entry`=35491; -- NON_ATTACKABLE | IMMUNE_TO_PC | IMMUNE_TO_NPC
+UPDATE `creature_template` SET `ScriptName`='npc_black_knight_gryphon', `unit_flags`=(`unit_flags` | 0x300) WHERE `entry`=35491; -- IMMUNE_TO_PC | IMMUNE_TO_NPC (NON_ATTACKABLE set by script)
 
 -- ===== 3. Creature Template - Other Updates =====
 
@@ -535,5 +535,5 @@ INSERT INTO `creature_template_addon` (`entry`, `mount`) VALUES
 (36091, 29261),  -- Zul'tore H
 (36084, 10718);  -- Deathstalker Visceri H
 
--- Heroic difficulty entries: add DUNGEON_BOSS flag (0x10000) to flags_extra
-UPDATE `creature_template` SET `flags_extra`=(`flags_extra` | 0x10000) WHERE `entry` IN (36088, 36082, 36083, 36086, 36087, 36089, 36085, 36090, 36091, 36084);
+-- Heroic difficulty entries: sync faction and flags_extra to match normal entries (faction=21, flags_extra=0x10040)
+UPDATE `creature_template` SET `faction`=21, `flags_extra`=65600 WHERE `entry` IN (36088, 36082, 36083, 36086, 36087, 36089, 36085, 36090, 36091, 36084);
