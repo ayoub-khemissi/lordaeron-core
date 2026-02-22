@@ -106,6 +106,7 @@ struct trial_companion_commonAI : public ScriptedAI
     uint32 _resetThreatTimer;
 
     bool _defeated;
+    bool _justRemounted;
     ObjectGuid _newMountGuid;
     uint32 _remountCheckTimer;
 
@@ -138,6 +139,7 @@ struct trial_companion_commonAI : public ScriptedAI
         _refreshAuraTimer   = 0;
         _resetThreatTimer   = urand(5000, 15000);
         _defeated           = false;
+        _justRemounted      = false;
         _remountCheckTimer  = 5000;
 
         me->SetStandState(UNIT_STAND_STATE_STAND);
@@ -256,9 +258,10 @@ struct trial_companion_commonAI : public ScriptedAI
 
                 if (!pMount || !pMount->IsAlive())
                 {
-                    // Mount no longer available - stay down
+                    // Mount no longer available - stay down on the ground
                     me->GetMotionMaster()->Clear();
                     me->GetMotionMaster()->MoveIdle();
+                    me->SetStandState(UNIT_STAND_STATE_DEAD);
 
                     if (_instance->IsArenaChallengeComplete(DATA_ARENA_CHALLENGE))
                         _instance->SetData(DATA_ARENA_CHALLENGE, SPECIAL);
@@ -269,17 +272,14 @@ struct trial_companion_commonAI : public ScriptedAI
                 uint32 displayId = pMount->GetDisplayId();
                 pMount->DespawnOrUnsummon();
 
+                me->SetStandState(UNIT_STAND_STATE_STAND);
                 me->SetMountDisplayId(displayId);
 
                 me->RemoveAurasDueToSpell(SPELL_TRAMPLED);
                 DoCast(me, SPELL_FULL_HEAL, true);
 
                 _defeated = false;
-                me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
-                me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
-                me->SetReactState(REACT_AGGRESSIVE);
-                me->GetMotionMaster()->Clear();
-                DoZoneInCombat();
+                _justRemounted = true;
 
                 break;
             }
@@ -313,7 +313,6 @@ struct trial_companion_commonAI : public ScriptedAI
 
         if (pMount)
         {
-            me->SetStandState(UNIT_STAND_STATE_STAND);
             float fX, fY, fZ;
             pMount->GetContactPoint(me, fX, fY, fZ);
             me->SetWalk(true);
@@ -334,6 +333,23 @@ struct trial_companion_commonAI : public ScriptedAI
 
     void UpdateAI(uint32 diff) override
     {
+        // Deferred remount: enter combat from UpdateAI context (not MovementInform)
+        if (_justRemounted)
+        {
+            _justRemounted = false;
+            me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+            me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
+            me->SetReactState(REACT_AGGRESSIVE);
+            me->SetWalk(false);
+            me->AttackStop();
+            me->GetMotionMaster()->Clear();
+            DoZoneInCombat();
+
+            if (Unit* victim = me->SelectVictim())
+                AttackStart(victim);
+            return;
+        }
+
         // Dismounted champion - refresh/reapply Trampled aura when a player mount is nearby
         if (_defeated && _instance && _instance->GetData(DATA_ARENA_CHALLENGE) != DONE)
         {
