@@ -41,6 +41,38 @@ enum LanceItems
     ITEM_HORDE_LANCE                = 46070,
 };
 
+enum PennonSpells
+{
+    SPELL_PENNON_SILVERMOON         = 66360,    // Eressea Dawnsinger
+    SPELL_PENNON_EXODAR             = 66362,    // Colosos
+    SPELL_PENNON_IRONFORGE          = 66363,    // Lana Stouthammer
+    SPELL_PENNON_UNDERCITY          = 66364,    // Deathstalker Visceri
+    SPELL_PENNON_GNOMEREGAN         = 66365,    // Ambrose Boltspark
+    SPELL_PENNON_DARNASSUS          = 66366,    // Jaelyne Evensong
+    SPELL_PENNON_ORGRIMMAR          = 66367,    // Mokra the Skullcrusher
+    SPELL_PENNON_STORMWIND          = 66368,    // Jacob Alerius
+    SPELL_PENNON_THUNDER_BLUFF      = 66370,    // Runok Wildmane
+    SPELL_PENNON_SENJIN             = 66371,    // Zul'tore
+};
+
+static uint32 GetPennonSpellForEntry(uint32 entry)
+{
+    switch (entry)
+    {
+        case NPC_ALLIANCE_WARRIOR:  return SPELL_PENNON_STORMWIND;
+        case NPC_ALLIANCE_MAGE:     return SPELL_PENNON_GNOMEREGAN;
+        case NPC_ALLIANCE_SHAMAN:   return SPELL_PENNON_EXODAR;
+        case NPC_ALLIANCE_HUNTER:   return SPELL_PENNON_DARNASSUS;
+        case NPC_ALLIANCE_ROGUE:    return SPELL_PENNON_IRONFORGE;
+        case NPC_HORDE_WARRIOR:     return SPELL_PENNON_ORGRIMMAR;
+        case NPC_HORDE_MAGE:        return SPELL_PENNON_SILVERMOON;
+        case NPC_HORDE_SHAMAN:      return SPELL_PENNON_THUNDER_BLUFF;
+        case NPC_HORDE_HUNTER:      return SPELL_PENNON_SENJIN;
+        case NPC_HORDE_ROGUE:       return SPELL_PENNON_UNDERCITY;
+        default:                    return 0;
+    }
+}
+
 // ===== Shared base class for all 5 Grand Champions =====
 
 struct trial_companion_commonAI : public ScriptedAI
@@ -110,6 +142,9 @@ struct trial_companion_commonAI : public ScriptedAI
 
         me->SetStandState(UNIT_STAND_STATE_STAND);
         me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
+
+        if (uint32 pennonSpell = GetPennonSpellForEntry(me->GetEntry()))
+            DoCast(me, pennonSpell, true);
     }
 
     void JustEngagedWith(Unit* who) override
