@@ -1356,7 +1356,7 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
             }
             if (Creature* pGryphon = GetCreatureByEntry(NPC_BLACK_KNIGHT_GRYPHON))
                 pGryphon->GetMotionMaster()->MovePath(pGryphon->GetEntry() * 10, false);
-            m_events.ScheduleEvent(EVENT_BK_GRYPHON_DISMOUNT, 21s);
+            m_events.ScheduleEvent(EVENT_BK_GRYPHON_DISMOUNT, 16s);
             break;
         }
 
@@ -1364,8 +1364,8 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
             if (Creature* pGryphon = GetCreatureByEntry(NPC_BLACK_KNIGHT_GRYPHON))
             {
                 pGryphon->RemoveAurasDueToSpell(SPELL_RIDE_VEHICLE_HARDCODED);
-                pGryphon->GetMotionMaster()->MovePoint(0, 709.245f, 632.610f, 444.573f);
-                pGryphon->DespawnOrUnsummon(2500ms);
+                pGryphon->GetMotionMaster()->MovePoint(0, 709.245f, 632.610f, 430.573f);
+                pGryphon->DespawnOrUnsummon(3s);
             }
             m_events.ScheduleEvent(EVENT_BK_INTRO_1, 1s);
             break;
@@ -1411,7 +1411,7 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                 if (Creature* pTirion = GetCreatureByEntry(NPC_TIRION_FORDRING))
                     pKnight->SetFacingToObject(pTirion);
             }
-            m_events.ScheduleEvent(EVENT_BK_INTRO_4, 15s);
+            m_events.ScheduleEvent(EVENT_BK_INTRO_4, 10s);
             break;
 
         case EVENT_BK_INTRO_4:
