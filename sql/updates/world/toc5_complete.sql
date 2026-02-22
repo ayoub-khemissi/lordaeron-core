@@ -14,11 +14,15 @@ UPDATE `instance_template` SET `script`='instance_trial_of_the_champion' WHERE `
 UPDATE `creature_template` SET `ScriptName`='npc_announcer_toc5', `npcflag`=1 WHERE `entry` IN (35004, 35005);
 
 -- Grand Champion Bosses (boss_grand_champions.cpp)
-UPDATE `creature_template` SET `ScriptName`='boss_champion_warrior' WHERE `entry` IN (34705, 35572);
-UPDATE `creature_template` SET `ScriptName`='boss_champion_mage' WHERE `entry` IN (34702, 35569);
-UPDATE `creature_template` SET `ScriptName`='boss_champion_shaman' WHERE `entry` IN (34701, 35571);
-UPDATE `creature_template` SET `ScriptName`='boss_champion_hunter' WHERE `entry` IN (34657, 35570);
-UPDATE `creature_template` SET `ScriptName`='boss_champion_rogue' WHERE `entry` IN (34703, 35617);
+-- CREATURE_TYPE_FLAG_ALLOW_MOUNTED_COMBAT (0x800) required for cosmetic mount during jousting
+UPDATE `creature_template` SET `ScriptName`='boss_champion_warrior', `type_flags`=`type_flags`|0x800 WHERE `entry` IN (34705, 35572);
+UPDATE `creature_template` SET `ScriptName`='boss_champion_mage', `type_flags`=`type_flags`|0x800 WHERE `entry` IN (34702, 35569);
+UPDATE `creature_template` SET `ScriptName`='boss_champion_shaman', `type_flags`=`type_flags`|0x800 WHERE `entry` IN (34701, 35571);
+UPDATE `creature_template` SET `ScriptName`='boss_champion_hunter', `type_flags`=`type_flags`|0x800 WHERE `entry` IN (34657, 35570);
+UPDATE `creature_template` SET `ScriptName`='boss_champion_rogue', `type_flags`=`type_flags`|0x800 WHERE `entry` IN (34703, 35617);
+
+-- Heroic difficulty entries - also need ALLOW_MOUNTED_COMBAT
+UPDATE `creature_template` SET `type_flags`=`type_flags`|0x800 WHERE `entry` IN (36088, 36082, 36083, 36086, 36087, 36089, 36085, 36090, 36091, 36084);
 
 -- Champion Mounts - intro vehicles (boss_grand_champions.cpp)
 UPDATE `creature_template` SET `ScriptName`='npc_champion_mount' WHERE `entry` IN (35644, 36559, 35637, 35633, 35768, 34658, 35636, 35638, 35635, 35640, 35641, 35634);

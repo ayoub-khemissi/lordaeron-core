@@ -278,6 +278,7 @@ struct trial_companion_commonAI : public ScriptedAI
                 me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
                 me->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_NPC);
                 me->SetReactState(REACT_AGGRESSIVE);
+                me->GetMotionMaster()->Clear();
                 DoZoneInCombat();
 
                 break;
