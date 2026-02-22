@@ -432,7 +432,10 @@ public:
 
     struct npc_black_knight_gryphonAI : public ScriptedAI
     {
-        npc_black_knight_gryphonAI(Creature* creature) : ScriptedAI(creature) { }
+        npc_black_knight_gryphonAI(Creature* creature) : ScriptedAI(creature)
+        {
+            me->SetReactState(REACT_PASSIVE);
+        }
 
         void Reset() override { }
         void AttackStart(Unit* /*who*/) override { }
@@ -461,7 +464,7 @@ class spell_black_knight_res : public SpellScript
 
     void Register() override
     {
-        OnEffectHitTarget += SpellEffectFn(spell_black_knight_res::HandleScript, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
+        OnEffectHitTarget += SpellEffectFn(spell_black_knight_res::HandleScript, EFFECT_0, SPELL_EFFECT_DUMMY);
     }
 };
 
@@ -486,28 +489,6 @@ class spell_black_knight_ghoul_explode : public SpellScript
     }
 };
 
-// 67754 - Ghoul Explode
-// 67889 - Ghoul Explode
-class spell_black_knight_ghoul_explode_risen_ghoul : public SpellScript
-{
-    PrepareSpellScript(spell_black_knight_ghoul_explode_risen_ghoul);
-
-    bool Validate(SpellInfo const* spellInfo) override
-    {
-        return ValidateSpellInfo({ uint32(spellInfo->GetEffect(EFFECT_1).CalcValue()) });
-    }
-
-    void HandleScript(SpellEffIndex /*effIndex*/)
-    {
-        GetCaster()->CastSpell(GetCaster(), uint32(GetEffectValue()));
-    }
-
-    void Register() override
-    {
-        OnEffectHit += SpellEffectFn(spell_black_knight_ghoul_explode_risen_ghoul::HandleScript, EFFECT_1, SPELL_EFFECT_SCRIPT_EFFECT);
-    }
-};
-
 void AddSC_boss_black_knight()
 {
     new boss_black_knight();
@@ -515,5 +496,4 @@ void AddSC_boss_black_knight()
     new npc_black_knight_gryphon();
     RegisterSpellScript(spell_black_knight_res);
     RegisterSpellScript(spell_black_knight_ghoul_explode);
-    RegisterSpellScript(spell_black_knight_ghoul_explode_risen_ghoul);
 }

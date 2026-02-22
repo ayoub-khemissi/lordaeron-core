@@ -1351,6 +1351,8 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
             {
                 pHerald->AI()->Talk(SAY_HERALD_BLACK_KNIGHT);
                 pHerald->CastSpell(pHerald, SPELL_HERALD_FACE_DARK_KNIGHT, false);
+                if (Creature* pGryphon = GetCreatureByEntry(NPC_BLACK_KNIGHT_GRYPHON))
+                    pHerald->SetFacingToObject(pGryphon);
             }
             if (Creature* pGryphon = GetCreatureByEntry(NPC_BLACK_KNIGHT_GRYPHON))
                 pGryphon->GetMotionMaster()->MovePath(pGryphon->GetEntry() * 10, false);
@@ -1360,7 +1362,11 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
 
         case EVENT_BK_GRYPHON_DISMOUNT:
             if (Creature* pGryphon = GetCreatureByEntry(NPC_BLACK_KNIGHT_GRYPHON))
+            {
                 pGryphon->RemoveAurasDueToSpell(SPELL_RIDE_VEHICLE_HARDCODED);
+                pGryphon->GetMotionMaster()->MovePoint(0, 709.245f, 632.610f, 444.573f);
+                pGryphon->DespawnOrUnsummon(2500ms);
+            }
             m_events.ScheduleEvent(EVENT_BK_INTRO_1, 1s);
             break;
 
@@ -1381,7 +1387,8 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
 
         case EVENT_BK_DEATHS_RESPITE:
             if (Creature* pKnight = GetCreatureByEntry(NPC_BLACK_KNIGHT))
-                pKnight->CastSpell(pKnight, SPELL_DEATHS_RESPITE_INTRO, false);
+                if (Creature* pHerald = GetCreatureByEntry(m_uiHeraldEntry))
+                    pKnight->CastSpell(pHerald, SPELL_DEATHS_RESPITE_INTRO, false);
             m_events.ScheduleEvent(EVENT_BK_TIRION_INTRO_2, 3s);
             break;
 
@@ -1418,6 +1425,7 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
             {
                 pKnight->SetHomePosition(aKnightPositions[2][0], aKnightPositions[2][1], aKnightPositions[2][2], aKnightPositions[2][3]);
                 pKnight->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                pKnight->AI()->DoZoneInCombat();
             }
             break;
 

@@ -37,7 +37,7 @@ UPDATE `creature_template` SET `ScriptName` = 'npc_argent_priestess'    WHERE `e
 -- Black Knight (boss_black_knight.cpp)
 UPDATE `creature_template` SET `ScriptName`='boss_black_knight' WHERE `entry`=35451;
 UPDATE `creature_template` SET `ScriptName`='npc_black_knight_ghoul' WHERE `entry` IN (35545, 35564, 35590);
-UPDATE `creature_template` SET `ScriptName`='npc_black_knight_gryphon' WHERE `entry`=35491;
+UPDATE `creature_template` SET `ScriptName`='npc_black_knight_gryphon', `unit_flags`=(`unit_flags` | 0x302) WHERE `entry`=35491; -- NON_ATTACKABLE | IMMUNE_TO_PC | IMMUNE_TO_NPC
 
 -- ===== 3. Creature Template - Other Updates =====
 
@@ -335,7 +335,7 @@ REPLACE INTO `gameobject` (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `posit
 (@OGUID+ 4, 195486, 650, 3, 1, 813.12, 617.59, 413.03, 3.22222, 0, 0, -0.999188, 0.0403038, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple_Skull01
 (@OGUID+ 5, 195477, 650, 3, 1, 813.13, 617.632, 413.039, 0, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Doodad_InstanceNewPortal_Purple07
 (@OGUID+ 6, 195650, 650, 3, 1, 807.782, 618.023, 412.393, 3.19476, 0, 0, -0.999647, 0.0265786, 0, 255, 0), -- North Portcullis
-(@OGUID+ 7, 195649, 650, 3, 1, 685.573, 618.052, 412.393, 6.28135, 0, 0, -0.000911546, 1, 0, 255, 0), -- South Portcullis
+(@OGUID+ 7, 195649, 650, 3, 1, 685.573, 618.052, 412.393, 6.28135, 0, 0, -0.000911546, 1, 0, 255, 1), -- South Portcullis (closed by default)
 (@OGUID+ 8, 195648, 650, 3, 1, 746.64, 556.854, 412.393, 1.5708, 0, 0, 0.707107, 0.707107, 0, 255, 0), -- East Portcullis
 (@OGUID+ 9, 195647, 650, 3, 1, 746.698, 677.469, 412.339, 1.5708, 0, 0, 0.707107, 0.707107, 86400, 255, 1), -- Main Gate
 (@OGUID+10, 196398, 650, 3, 1, 784.533, 660.238, 412.389, 5.52737, 0, 0, -0.368974, 0.92944, 86400, 255, 1), -- Lance Rack
@@ -455,16 +455,45 @@ REPLACE INTO `achievement_criteria_data` (`criteria_id`, `type`, `value1`, `valu
 (11789, 12, 0, 0, ''),  -- Had Worse (Black Knight) - checked via instance script
 (11858, 12, 0, 0, '');  -- Faceroller (Eadric) - checked via instance script
 
--- ===== 12. Disables =====
+-- ===== 12. Waypoint Data =====
+-- Black Knight's Gryphon (NPC 35491) flight path into the arena
+-- Path ID = entry * 10 = 354910 (used by MovePath in instance script)
+-- Spiral descent from upper rafters (Z=443) down to arena floor (Z=411)
+DELETE FROM `waypoint_data` WHERE `id`=354910;
+INSERT INTO `waypoint_data` (`id`, `point`, `position_x`, `position_y`, `position_z`, `move_type`) VALUES
+(354910, 1, 754.709, 646.999, 442.961, 3),
+(354910, 2, 738.85, 637.289, 439.134, 3),
+(354910, 3, 727.272, 619.164, 438.186, 3),
+(354910, 4, 733.524, 608.939, 433.711, 3),
+(354910, 5, 745.537, 605.399, 428.795, 3),
+(354910, 6, 754.46, 607.124, 426.542, 3),
+(354910, 7, 763.48, 616.796, 422.603, 3),
+(354910, 8, 761.823, 625.299, 418.482, 3),
+(354910, 9, 755.923, 631.506, 413.966, 3),
+(354910, 10, 744.841, 634.505, 411.575, 2);
+
+-- Clean up old migrated path at wrong ID (script_waypoint auto-migration used (entry<<3)|2 = 283930)
+DELETE FROM `waypoint_data` WHERE `id`=283930;
+
+-- Black Knight's Gryphon: set Flight=2 (CanFly) so it uses flying movement
+DELETE FROM `creature_template_movement` WHERE `CreatureId`=35491;
+INSERT INTO `creature_template_movement` (`CreatureId`, `Flight`) VALUES (35491, 2);
+
+-- Remove default vehicle accessory: the Black Knight is mounted on the gryphon via script
+-- (SPELL_RIDE_VEHICLE_HARDCODED in EVENT_BK_TIRION_COMPLETE), not as a vehicle accessory.
+-- Without this DELETE, a second Black Knight auto-spawns as the gryphon's passenger.
+DELETE FROM `vehicle_template_accessory` WHERE `entry`=35491 AND `accessory_entry`=35451;
+
+-- ===== 13. Disables =====
 -- Disable mmaps for ToC5 instance
 REPLACE INTO `disables` (`sourceType`, `entry`, `flags`, `params_0`, `params_1`, `comment`) VALUES
 (7, 650, 0, '', '', 'Disable mmaps - Trial of the Champion');
 
--- ===== 13. Creature Template =====
+-- ===== 14. Creature Template =====
 -- NPC_WARHORSE_ALLIANCE and NPC_BATTLEWORG_HORDE
 UPDATE creature_template SET ScriptName = 'npc_toc5_player_vehicle' WHERE entry IN (36557, 36558);
 
--- ===== 14. Player Mount Spells =====
+-- ===== 15. Player Mount Spells =====
 -- Alliance mount (36557) is missing creature_template_spell data, copy from Horde mount (36558)
 -- Spell 0: 68505 (Thrust), Spell 1: 62575 (Shield-Breaker), Spell 2: 68282 (Charge), Spell 3: 62552 (Defend)
 DELETE FROM `creature_template_spell` WHERE `CreatureID` = 36557;
@@ -474,24 +503,24 @@ INSERT INTO `creature_template_spell` (`CreatureID`, `Index`, `Spell`, `Verified
 (36557, 2, 68282, 0),
 (36557, 3, 62552, 0);
 
--- ===== 15. Player Mount Spellclick =====
+-- ===== 16. Player Mount Spellclick =====
 -- Alliance mount (36557) is missing npc_spellclick_spells entry, copy from Horde mount (36558)
 DELETE FROM `npc_spellclick_spells` WHERE `npc_entry` = 36557;
 INSERT INTO `npc_spellclick_spells` (`npc_entry`, `spell_id`, `cast_flags`, `user_type`) VALUES
 (36557, 67830, 1, 0);
 
--- ===== 16. Remove old spellclick conditions for ToC5 mounts =====
+-- ===== 17. Remove old spellclick conditions for ToC5 mounts =====
 -- Lance check is now handled via SpellScript (spell_toc5_ride_mount)
 DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 18 AND `SourceGroup` IN (36557, 36558) AND `SourceEntry` = 67830;
 
--- ===== 17. Vehicle Template Accessory Removal =====
+-- ===== 18. Vehicle Template Accessory Removal =====
 -- Champions are now spawned independently and board their mounts via script
 DELETE FROM `vehicle_template_accessory` WHERE `entry` IN (
   35637, 35633, 35768, 34658, 35636,  -- Alliance mounts
   35638, 35635, 35640, 35641, 35634   -- Horde mounts
 );
 
--- ===== 18. Champion Cosmetic Mounts =====
+-- ===== 19. Champion Cosmetic Mounts =====
 -- Champions now use cosmetic mounts instead of the vehicle system
 DELETE FROM `creature_template_addon` WHERE `entry` IN (34705, 34702, 34701, 34657, 34703, 35572, 35569, 35571, 35570, 35617);
 INSERT INTO `creature_template_addon` (`entry`, `mount`) VALUES

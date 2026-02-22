@@ -5043,6 +5043,13 @@ void SpellMgr::LoadSpellInfoCorrections()
     if (LockEntry* entry = const_cast<LockEntry*>(sLockStore.LookupEntry(36))) // 3366 Opening, allows to open without proper key
         entry->Type[2] = LOCK_KEY_NONE;
 
+    // Death's Respite Intro (ToC5 Black Knight) - change target from TARGET_UNIT_NEARBY_ENTRY to
+    // TARGET_UNIT_TARGET_ANY so the spell hits the explicit CastSpell target (the herald)
+    ApplySpellFix({ 66798 }, [](SpellInfo* spellInfo)
+    {
+        spellInfo->_GetEffect(EFFECT_0).TargetA = SpellImplicitTargetInfo(TARGET_UNIT_TARGET_ANY);
+    });
+
     TC_LOG_INFO("server.loading", ">> Loaded SpellInfo corrections in {} ms", GetMSTimeDiffToNow(oldMSTime));
 }
 
