@@ -103,6 +103,7 @@ instance_trial_of_the_champion_InstanceMapScript::instance_trial_of_the_champion
     m_bSkipIntro = false;
     m_bHadWorseAchiev = false;
     m_uiArenaState = NOT_STARTED;
+    m_uiArgentTrashArrived = 0;
     m_lanceCheckTimer = 1000;
 
     m_vAllianceTriggersGuids.resize(MAX_CHAMPIONS_AVAILABLE);
@@ -411,20 +412,66 @@ void instance_trial_of_the_champion_InstanceMapScript::SetData(uint32 uiType, ui
             return;
         case ACTION_ARGENT_TRASH_DIED:
         {
-            m_lArgentTrashGuids.remove(ObjectGuid::Create<HighGuid::Unit>(uiData, ObjectGuid::LowType(0)));
-            // Actually we track by removing on death - decrement count
-            // Find and remove the dead creature from the list
-            // The uiData parameter is not the GUID, it's just a signal
-            // We handle this by checking the list size after removal in OnCreatureDeath equivalent
-            // For now, just check if all trash are dead
-            if (m_lArgentTrashGuids.empty())
+            // Check if all argent trash are dead
+            bool allDead = true;
+            for (auto const& guid : m_lArgentTrashGuids)
             {
-                // Make the argent champion hostile
+                if (Creature* pTrash = instance->GetCreature(guid))
+                {
+                    if (pTrash->IsAlive())
+                    {
+                        allDead = false;
+                        break;
+                    }
+                }
+            }
+
+            if (allDead)
+            {
+                // Transition to boss phase - make the argent champion hostile
                 if (Creature* pChampion = GetCreatureByEntry(m_uiGrandChampionEntry))
                 {
                     pChampion->SetFaction(FACTION_CHAMPION_HOSTILE);
+                    pChampion->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                    pChampion->SetReactState(REACT_AGGRESSIVE);
+                    pChampion->SetWalk(true);
                     pChampion->GetMotionMaster()->MovePoint(POINT_ID_CENTER, 746.630f, 636.570f, 411.572f);
                     pChampion->SetHomePosition(746.630f, 636.570f, 411.572f, pChampion->GetOrientation());
+                }
+            }
+            return;
+        }
+        case ACTION_ARGENT_TRASH_ARRIVED:
+        {
+            ++m_uiArgentTrashArrived;
+            if (m_uiArgentTrashArrived >= MAX_ARGENT_TRASH)
+            {
+                // All soldiers in position - close combat doors (north + east)
+                DoSetCombatDoorState(false);
+
+                // Make all trash attackable but wait for player aggro
+                for (auto const& guid : m_lArgentTrashGuids)
+                {
+                    if (Creature* pTrash = instance->GetCreature(guid))
+                    {
+                        pTrash->RemoveUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                        pTrash->SetReactState(REACT_AGGRESSIVE);
+                    }
+                }
+            }
+            return;
+        }
+        case ACTION_ARGENT_TRASH_GROUP_AGGRO:
+        {
+            if (uiData >= 3)
+                return;
+
+            for (uint8 j = 0; j < 3; ++j)
+            {
+                if (Creature* pTrash = instance->GetCreature(m_ArgentTrashGroups[uiData][j]))
+                {
+                    if (pTrash->IsAlive() && !pTrash->IsInCombat())
+                        pTrash->AI()->DoZoneInCombat();
                 }
             }
             return;
@@ -1162,19 +1209,28 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
                 pChampion->CastSpell(pChampion, SPELL_SPECTATOR_FORCE_CHEER_2, true);
             }
 
-            // Summon argent trash
+            // Summon argent trash (3 groups of 3: group = i % 3, member = i / 3)
             m_lArgentTrashGuids.clear();
+            m_uiArgentTrashArrived = 0;
+            memset(m_ArgentTrashGroups, 0, sizeof(m_ArgentTrashGroups));
             for (uint8 i = 0; i < MAX_ARGENT_TRASH; ++i)
             {
                 if (Creature* pHelper = pHerald->SummonCreature(aArgentChallengeHelpers[i].uiEntry,
                     aArgentChallengeHelpers[i].fX, aArgentChallengeHelpers[i].fY, aArgentChallengeHelpers[i].fZ, aArgentChallengeHelpers[i].fO,
                     TEMPSUMMON_DEAD_DESPAWN, 0s))
                 {
+                    uint8 groupId = i % 3;
+                    uint8 memberIdx = i / 3;
+
+                    pHelper->SetUnitFlag(UNIT_FLAG_IMMUNE_TO_PC);
+                    pHelper->SetReactState(REACT_PASSIVE);
+                    pHelper->AI()->SetData(0, groupId);
                     pHelper->GetMotionMaster()->MovePoint(POINT_ID_CENTER,
                         aArgentChallengeHelpers[i].fTargetX, aArgentChallengeHelpers[i].fTargetY, aArgentChallengeHelpers[i].fTargetZ);
                     pHelper->SetHomePosition(aArgentChallengeHelpers[i].fTargetX, aArgentChallengeHelpers[i].fTargetY,
                         aArgentChallengeHelpers[i].fTargetZ, pHelper->GetOrientation());
                     m_lArgentTrashGuids.push_back(pHelper->GetGUID());
+                    m_ArgentTrashGroups[groupId][memberIdx] = pHelper->GetGUID();
                 }
             }
 
@@ -1185,6 +1241,7 @@ void instance_trial_of_the_champion_InstanceMapScript::ProcessDialogueEvent(uint
         case EVENT_ARGENT_CHAMPION_MOVE:
             if (Creature* pChampion = GetCreatureByEntry(m_uiGrandChampionEntry))
             {
+                pChampion->SetWalk(true);
                 pChampion->GetMotionMaster()->MovePoint(POINT_ID_CENTER,
                     aArgentChallengeHelpers[9].fTargetX, aArgentChallengeHelpers[9].fTargetY, aArgentChallengeHelpers[9].fTargetZ);
                 pChampion->SetHomePosition(aArgentChallengeHelpers[9].fTargetX, aArgentChallengeHelpers[9].fTargetY,

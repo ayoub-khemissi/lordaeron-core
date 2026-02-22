@@ -59,6 +59,8 @@ enum TCData
     ACTION_CHAMPIONS_IN_COMBAT      = 107,  // set all champions in combat
     ACTION_ARENA_HELPER_DIED        = 108,  // a jousting helper (minion) died
     ACTION_PREPARE_GROUND_PHASE     = 109,  // restart ground phase after wipe
+    ACTION_ARGENT_TRASH_ARRIVED     = 110,  // an argent soldier reached arena position
+    ACTION_ARGENT_TRASH_GROUP_AGGRO = 111,  // pull a spatial group of argent soldiers into combat
 };
 
 // ===== GUID Data IDs for GetGuidData / SetGuidData =====
@@ -501,6 +503,8 @@ private:
 
     // Argent trash GUIDs
     std::list<ObjectGuid> m_lArgentTrashGuids;
+    ObjectGuid m_ArgentTrashGroups[3][3];        // [groupId][memberIndex]
+    uint32 m_uiArgentTrashArrived;
 
     // Arena helper (trash champion) GUIDs per wave
     std::set<ObjectGuid> m_sArenaHelpersGuids[MAX_CHAMPIONS_ARENA];

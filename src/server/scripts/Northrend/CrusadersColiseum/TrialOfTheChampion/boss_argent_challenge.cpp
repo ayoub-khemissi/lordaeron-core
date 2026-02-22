@@ -46,6 +46,7 @@ enum ArgentSpells
     SPELL_CONFESS_TRIGGER       = 66547,        // Confess trigger
     SPELL_SUMMON_MEMORY         = 66545,
     SPELL_KILL_CREDIT_PALETRESS = 68574,
+    SPELL_CONFESSOR_ACHIEVEMENT = 68206,        // required for achiev 3802
 
     // Memory
     SPELL_SHADOWFORM            = 41408,
@@ -182,13 +183,16 @@ public:
 
             if (_hammerTimer <= diff)
             {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
                 {
-                    DoCast(target, SPELL_HAMMER_RIGHTEOUS);
-                    DoCast(me, SPELL_HAMMER_JUSTICE, true);
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                    {
+                        DoCast(target, SPELL_HAMMER_RIGHTEOUS);
+                        DoCast(me, SPELL_HAMMER_JUSTICE, true);
 
-                    Talk(EMOTE_EADRIC_HAMMER, target);
-                    _hammerTimer = 35000;
+                        Talk(EMOTE_EADRIC_HAMMER, target);
+                        _hammerTimer = 35000;
+                    }
                 }
             }
             else
@@ -196,9 +200,12 @@ public:
 
             if (_radianceTimer <= diff)
             {
-                DoCastAOE(SPELL_RADIANCE);
-                Talk(EMOTE_EADRIC_RADIANCE);
-                _radianceTimer = urand(30000, 35000);
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    DoCastAOE(SPELL_RADIANCE);
+                    Talk(EMOTE_EADRIC_RADIANCE);
+                    _radianceTimer = urand(30000, 35000);
+                }
             }
             else
                 _radianceTimer -= diff;
@@ -228,7 +235,11 @@ public:
         uint32 _holyFireTimer;
         uint32 _holyNovaTimer;
         uint32 _renewTimer;
+        uint32 _memoryPhaseTimer;
+        uint32 _memorySummonTimer;
 
+        bool _memoryPhaseStarted;
+        bool _confessCast;
         bool _summonedMemory;
         ObjectGuid _memoryGuid;
 
@@ -237,12 +248,16 @@ public:
             argent_champion_commonAI::Reset();
             me->RemoveAllAuras();
 
-            _holySmiteTimer = 0;
-            _holyFireTimer  = urand(7000, 12000);
-            _holyNovaTimer  = urand(20000, 25000);
-            _renewTimer     = urand(5000, 9000);
+            _holySmiteTimer     = 0;
+            _holyFireTimer      = urand(7000, 12000);
+            _holyNovaTimer      = urand(20000, 25000);
+            _renewTimer         = urand(5000, 9000);
+            _memoryPhaseTimer   = 0;
+            _memorySummonTimer  = 0;
 
-            _summonedMemory = false;
+            _memoryPhaseStarted = false;
+            _confessCast        = false;
+            _summonedMemory     = false;
 
             if (Creature* pMemory = ObjectAccessor::GetCreature(*me, _memoryGuid))
                 if (pMemory->IsAlive())
@@ -272,12 +287,14 @@ public:
         {
             summoned->CastSpell(summoned, SPELL_SHADOWFORM, true);
             summoned->CastSpell(summoned, SPELL_MEMORY_SPAWN_EFFECT, true);
+            summoned->AI()->DoZoneInCombat();
             _memoryGuid = summoned->GetGUID();
         }
 
-        void SummonedCreatureDies(Creature* /*summoned*/, Unit* /*killer*/) override
+        void SummonedCreatureDies(Creature* summoned, Unit* /*killer*/) override
         {
             Talk(SAY_PALETRESS_MEMORY_DIES);
+            summoned->CastSpell(summoned, SPELL_CONFESSOR_ACHIEVEMENT, true);
             me->RemoveAurasDueToSpell(SPELL_SHIELD);
         }
 
@@ -286,24 +303,50 @@ public:
             if (!UpdateVictim())
                 return;
 
-            // At 25% HP, summon memory
-            if (!_summonedMemory && HealthBelowPct(25))
+            // At 50% HP: Holy Nova → 1s → Reflective Shield + Confess → 6s → Summon Memory
+            if (!_memoryPhaseStarted && HealthBelowPct(50))
             {
                 Talk(SAY_PALETRESS_MEMORY);
+                DoCastAOE(SPELL_HOLY_NOVA, true);
+                _memoryPhaseTimer = 1000;
+                _memoryPhaseStarted = true;
+            }
 
-                DoCast(me, SPELL_CONFESS_TRIGGER, true);
-                DoCast(me, SPELL_CONFESS, true);
-                DoCastAOE(SPELL_SUMMON_MEMORY, false);
-                DoCast(me, SPELL_SHIELD, true);
-                _summonedMemory = true;
+            if (_memoryPhaseTimer && !_confessCast)
+            {
+                if (_memoryPhaseTimer <= diff)
+                {
+                    DoCast(me, SPELL_SHIELD, true);
+                    DoCast(me, SPELL_CONFESS, true);
+                    _confessCast = true;
+                    _memorySummonTimer = 6000;
+                    _memoryPhaseTimer = 0;
+                }
+                else
+                    _memoryPhaseTimer -= diff;
+            }
+
+            if (_memorySummonTimer && !_summonedMemory)
+            {
+                if (_memorySummonTimer <= diff)
+                {
+                    DoCastAOE(SPELL_SUMMON_MEMORY, true);
+                    _summonedMemory = true;
+                    _memorySummonTimer = 0;
+                }
+                else
+                    _memorySummonTimer -= diff;
             }
 
             if (_holySmiteTimer <= diff)
             {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
                 {
-                    DoCast(target, SPELL_HOLY_SMITE);
-                    _holySmiteTimer = urand(1000, 2000);
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                    {
+                        DoCast(target, SPELL_HOLY_SMITE);
+                        _holySmiteTimer = urand(1000, 2000);
+                    }
                 }
             }
             else
@@ -311,10 +354,13 @@ public:
 
             if (_holyFireTimer <= diff)
             {
-                if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
                 {
-                    DoCast(target, SPELL_HOLY_FIRE);
-                    _holyFireTimer = 25000;
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                    {
+                        DoCast(target, SPELL_HOLY_FIRE);
+                        _holyFireTimer = 25000;
+                    }
                 }
             }
             else
@@ -322,18 +368,24 @@ public:
 
             if (_holyNovaTimer <= diff)
             {
-                DoCastAOE(SPELL_HOLY_NOVA);
-                _holyNovaTimer = urand(30000, 40000);
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    DoCastAOE(SPELL_HOLY_NOVA);
+                    _holyNovaTimer = urand(30000, 40000);
+                }
             }
             else
                 _holyNovaTimer -= diff;
 
             if (_renewTimer <= diff)
             {
-                if (Unit* target = DoSelectLowestHpFriendly(60.0f))
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
                 {
-                    DoCast(target, SPELL_RENEW);
-                    _renewTimer = 20000;
+                    if (Unit* target = DoSelectLowestHpFriendly(60.0f))
+                    {
+                        DoCast(target, SPELL_RENEW);
+                        _renewTimer = 20000;
+                    }
                 }
             }
             else
@@ -412,6 +464,8 @@ public:
 
         void JustDied(Unit* /*killer*/) override
         {
+            me->DespawnOrUnsummon(5s);
+
             if (TempSummon* summ = me->ToTempSummon())
                 if (Unit* summoner = summ->GetSummonerUnit())
                     if (summoner->IsAlive())
@@ -425,34 +479,120 @@ public:
     }
 };
 
-// ===== Argent Soldiers =====
+// ===== Argent Soldiers - Base =====
 
-class npc_argent_soldier : public CreatureScript
+struct argent_trash_commonAI : public ScriptedAI
+{
+    argent_trash_commonAI(Creature* creature) : ScriptedAI(creature)
+    {
+        _instance = creature->GetInstanceScript();
+        _groupId = 0;
+    }
+
+    InstanceScript* _instance;
+    uint8 _groupId;
+
+    void SetData(uint32 type, uint32 data) override
+    {
+        if (type == 0)
+            _groupId = static_cast<uint8>(data);
+    }
+
+    void MovementInform(uint32 type, uint32 pointId) override
+    {
+        if (type == POINT_MOTION_TYPE && pointId == POINT_ID_CENTER)
+        {
+            me->SetFacingTo(me->GetAbsoluteAngle(aArenaCenterPosition[0], aArenaCenterPosition[1]));
+
+            if (_instance)
+                _instance->SetData(ACTION_ARGENT_TRASH_ARRIVED, 0);
+        }
+    }
+
+    void JustEngagedWith(Unit* /*who*/) override
+    {
+        if (_instance)
+            _instance->SetData(ACTION_ARGENT_TRASH_GROUP_AGGRO, _groupId);
+    }
+
+    void JustDied(Unit* /*killer*/) override
+    {
+        me->DespawnOrUnsummon(5s);
+
+        if (_instance)
+            _instance->SetData(ACTION_ARGENT_TRASH_DIED, 0);
+    }
+};
+
+// ===== Argent Lightwielder =====
+
+enum ArgentLightwielderSpells
+{
+    SPELL_BLAZING_LIGHT         = 67247,
+    SPELL_CLEAVE                = 15284,
+    SPELL_UNBALANCING_STRIKE    = 67237,
+};
+
+class npc_argent_lightwielder : public CreatureScript
 {
 public:
-    npc_argent_soldier() : CreatureScript("npc_argent_soldier") { }
+    npc_argent_lightwielder() : CreatureScript("npc_argent_lightwielder") { }
 
-    struct npc_argent_soldierAI : public ScriptedAI
+    struct npc_argent_lightwielderAI : public argent_trash_commonAI
     {
-        npc_argent_soldierAI(Creature* creature) : ScriptedAI(creature)
+        npc_argent_lightwielderAI(Creature* creature) : argent_trash_commonAI(creature) { Reset(); }
+
+        uint32 _blazingLightTimer;
+        uint32 _cleaveTimer;
+        uint32 _unbalancingStrikeTimer;
+
+        void Reset() override
         {
-            _instance = creature->GetInstanceScript();
+            _blazingLightTimer      = urand(5000, 8000);
+            _cleaveTimer            = urand(3000, 6000);
+            _unbalancingStrikeTimer = urand(6000, 10000);
         }
 
-        InstanceScript* _instance;
-
-        void Reset() override { }
-
-        void JustDied(Unit* /*killer*/) override
-        {
-            if (_instance)
-                _instance->SetData(ACTION_ARGENT_TRASH_DIED, 0);
-        }
-
-        void UpdateAI(uint32 /*diff*/) override
+        void UpdateAI(uint32 diff) override
         {
             if (!UpdateVictim())
                 return;
+
+            if (_blazingLightTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    if (Unit* target = DoSelectLowestHpFriendly(40.0f))
+                    {
+                        DoCast(target, SPELL_BLAZING_LIGHT);
+                        _blazingLightTimer = urand(8000, 12000);
+                    }
+                }
+            }
+            else
+                _blazingLightTimer -= diff;
+
+            if (_cleaveTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    DoCastVictim(SPELL_CLEAVE);
+                    _cleaveTimer = urand(5000, 8000);
+                }
+            }
+            else
+                _cleaveTimer -= diff;
+
+            if (_unbalancingStrikeTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    DoCastVictim(SPELL_UNBALANCING_STRIKE);
+                    _unbalancingStrikeTimer = urand(8000, 12000);
+                }
+            }
+            else
+                _unbalancingStrikeTimer -= diff;
 
             DoMeleeAttackIfReady();
         }
@@ -460,7 +600,190 @@ public:
 
     CreatureAI* GetAI(Creature* creature) const override
     {
-        return GetTrialOfTheChampionAI<npc_argent_soldierAI>(creature);
+        return GetTrialOfTheChampionAI<npc_argent_lightwielderAI>(creature);
+    }
+};
+
+// ===== Argent Monk =====
+
+enum ArgentMonkSpells
+{
+    SPELL_FLURRY_OF_BLOWS   = 67233,
+    SPELL_PUMMEL            = 67235,
+    SPELL_DIVINE_SHIELD     = 67251,
+    SPELL_FINAL_MEDITATION  = 67255,
+};
+
+class npc_argent_monk : public CreatureScript
+{
+public:
+    npc_argent_monk() : CreatureScript("npc_argent_monk") { }
+
+    struct npc_argent_monkAI : public argent_trash_commonAI
+    {
+        npc_argent_monkAI(Creature* creature) : argent_trash_commonAI(creature) { Reset(); }
+
+        uint32 _flurryTimer;
+        uint32 _pummelTimer;
+        bool _shielded;
+
+        void Reset() override
+        {
+            _flurryTimer    = urand(4000, 8000);
+            _pummelTimer    = urand(6000, 10000);
+            _shielded       = false;
+        }
+
+        void DamageTaken(Unit* /*attacker*/, uint32& damage, DamageEffectType /*damageType*/, SpellInfo const* /*spellInfo*/) override
+        {
+            if (!_shielded && damage >= me->GetHealth())
+            {
+                damage = me->GetHealth() - 1;
+                DoCast(me, SPELL_DIVINE_SHIELD, true);
+                DoCast(me, SPELL_FINAL_MEDITATION);
+                _shielded = true;
+            }
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (!UpdateVictim())
+                return;
+
+            if (_flurryTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    DoCast(me, SPELL_FLURRY_OF_BLOWS);
+                    _flurryTimer = urand(10000, 15000);
+                }
+            }
+            else
+                _flurryTimer -= diff;
+
+            if (_pummelTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    if (me->GetVictim() && me->GetVictim()->HasUnitState(UNIT_STATE_CASTING))
+                    {
+                        DoCastVictim(SPELL_PUMMEL);
+                        _pummelTimer = urand(8000, 12000);
+                    }
+                    else
+                        _pummelTimer = 2000;
+                }
+            }
+            else
+                _pummelTimer -= diff;
+
+            DoMeleeAttackIfReady();
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<npc_argent_monkAI>(creature);
+    }
+};
+
+// ===== Argent Priestess =====
+
+enum ArgentPriestessSpells
+{
+    SPELL_PRIESTESS_HOLY_SMITE  = 36176,
+    SPELL_SHADOW_WORD_PAIN      = 34941,
+    SPELL_FOUNTAIN_OF_LIGHT     = 67194,
+    SPELL_MIND_CONTROL          = 67229,
+};
+
+class npc_argent_priestess : public CreatureScript
+{
+public:
+    npc_argent_priestess() : CreatureScript("npc_argent_priestess") { }
+
+    struct npc_argent_priestessAI : public argent_trash_commonAI
+    {
+        npc_argent_priestessAI(Creature* creature) : argent_trash_commonAI(creature) { Reset(); }
+
+        uint32 _holySmiteTimer;
+        uint32 _shadowWordPainTimer;
+        uint32 _fountainOfLightTimer;
+        uint32 _mindControlTimer;
+
+        void Reset() override
+        {
+            _holySmiteTimer         = 0;
+            _shadowWordPainTimer    = urand(3000, 6000);
+            _fountainOfLightTimer   = urand(15000, 20000);
+            _mindControlTimer       = urand(10000, 15000);
+        }
+
+        void UpdateAI(uint32 diff) override
+        {
+            if (!UpdateVictim())
+                return;
+
+            if (_holySmiteTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                    {
+                        DoCast(target, SPELL_PRIESTESS_HOLY_SMITE);
+                        _holySmiteTimer = urand(2000, 3000);
+                    }
+                }
+            }
+            else
+                _holySmiteTimer -= diff;
+
+            if (_shadowWordPainTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0))
+                    {
+                        DoCast(target, SPELL_SHADOW_WORD_PAIN);
+                        _shadowWordPainTimer = urand(8000, 12000);
+                    }
+                }
+            }
+            else
+                _shadowWordPainTimer -= diff;
+
+            if (_fountainOfLightTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    DoCast(me, SPELL_FOUNTAIN_OF_LIGHT);
+                    _fountainOfLightTimer = urand(25000, 35000);
+                }
+            }
+            else
+                _fountainOfLightTimer -= diff;
+
+            if (_mindControlTimer <= diff)
+            {
+                if (!me->HasUnitState(UNIT_STATE_CASTING))
+                {
+                    if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, 0.0f, true))
+                    {
+                        DoCast(target, SPELL_MIND_CONTROL);
+                        _mindControlTimer = urand(20000, 30000);
+                    }
+                }
+            }
+            else
+                _mindControlTimer -= diff;
+
+            DoMeleeAttackIfReady();
+        }
+    };
+
+    CreatureAI* GetAI(Creature* creature) const override
+    {
+        return GetTrialOfTheChampionAI<npc_argent_priestessAI>(creature);
     }
 };
 
@@ -583,7 +906,9 @@ void AddSC_boss_argent_challenge()
     new boss_eadric();
     new boss_paletress();
     new npc_memory();
-    new npc_argent_soldier();
+    new npc_argent_lightwielder();
+    new npc_argent_monk();
+    new npc_argent_priestess();
     new spell_eadric_radiance();
     new spell_paletress_summon_memory();
 }
