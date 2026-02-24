@@ -150,6 +150,83 @@ static bool IsPlayerTankSpec(Player* player)
     }
 }
 
+// Check if a player has a healer specialization based on their talents
+static bool IsPlayerHealSpec(Player* player)
+{
+    if (!player)
+        return false;
+
+    uint8 playerClass = player->GetClass();
+    uint8 activeSpec = player->GetActiveSpec();
+
+    // Only Paladin and Druid can both tank and heal among tanking classes
+    if (playerClass != CLASS_PALADIN && playerClass != CLASS_DRUID)
+        return false;
+
+    uint32 const* talentTabIds = GetTalentTabPages(playerClass);
+    if (!talentTabIds)
+        return false;
+
+    // Calculate points in each talent tree
+    uint32 talentPoints[3] = { 0, 0, 0 };
+
+    for (uint32 i = 0; i < sTalentStore.GetNumRows(); ++i)
+    {
+        TalentEntry const* talentInfo = sTalentStore.LookupEntry(i);
+        if (!talentInfo)
+            continue;
+
+        TalentTabEntry const* talentTabInfo = sTalentTabStore.LookupEntry(talentInfo->TabID);
+        if (!talentTabInfo)
+            continue;
+
+        if ((talentTabInfo->ClassMask & player->GetClassMask()) == 0)
+            continue;
+
+        for (uint8 tree = 0; tree < 3; ++tree)
+        {
+            if (talentTabIds[tree] == talentInfo->TabID)
+            {
+                for (uint8 rank = MAX_TALENT_RANK; rank > 0; --rank)
+                {
+                    if (talentInfo->SpellRank[rank - 1] && player->HasTalent(talentInfo->SpellRank[rank - 1], activeSpec))
+                    {
+                        talentPoints[tree] += rank;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // Determine primary tree
+    uint8 primaryTree = 0;
+    uint32 maxPoints = talentPoints[0];
+    for (uint8 i = 1; i < 3; ++i)
+    {
+        if (talentPoints[i] > maxPoints)
+        {
+            maxPoints = talentPoints[i];
+            primaryTree = i;
+        }
+    }
+
+    switch (playerClass)
+    {
+        case CLASS_PALADIN:
+            // Holy is the 1st tree (index 0)
+            return primaryTree == 0;
+
+        case CLASS_DRUID:
+            // Restoration is the 3rd tree (index 2)
+            return primaryTree == 2;
+
+        default:
+            return false;
+    }
+}
+
 // Update fake tank buff for a player based on their role and spec
 static void UpdateFakeTankBuff(Player* player, Group* group)
 {
@@ -160,10 +237,11 @@ static void UpdateFakeTankBuff(Player* player, Group* group)
     uint8 roles = sLFGMgr->GetRoles(playerGuid);
     bool hasTankRole = (roles & PLAYER_ROLE_TANK) != 0;
     bool isTankSpec = IsPlayerTankSpec(player);
+    bool isHealSpec = IsPlayerHealSpec(player);
     bool hasBuff = player->HasAura(LFG_SPELL_FAKE_TANK_BUFF);
 
-    // Should have buff: has tank role but is NOT a tank spec
-    bool shouldHaveBuff = hasTankRole && !isTankSpec;
+    // Should have buff: has tank role and is a DPS spec (not tank, not heal)
+    bool shouldHaveBuff = hasTankRole && !isTankSpec && !isHealSpec;
 
     if (shouldHaveBuff && !hasBuff)
     {
@@ -389,6 +467,24 @@ void LFGPlayerScript::OnPlayerResurrect(Player* player)
         {
             UpdateFakeTankBuff(player, group);
         }
+    }
+}
+
+void LFGPlayerScript::OnActivateSpec(Player* player, uint8 /*spec*/)
+{
+    if (!sLFGMgr->isOptionEnabled(LFG_OPTION_ENABLE_DUNGEON_FINDER | LFG_OPTION_ENABLE_RAID_BROWSER))
+        return;
+
+    Map const* map = player->GetMap();
+    if (!map || !map->IsDungeon())
+        return;
+
+    if (!sLFGMgr->inLfgDungeonMap(player->GetGUID(), map->GetId(), map->GetDifficulty()))
+        return;
+
+    if (Group* group = player->GetGroup())
+    {
+        UpdateFakeTankBuff(player, group);
     }
 }
 

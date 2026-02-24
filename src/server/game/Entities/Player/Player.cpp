@@ -26594,6 +26594,8 @@ void Player::ActivateSpec(uint8 spec)
         aurEff->HandleShapeshiftBoosts(this, false);
         aurEff->HandleShapeshiftBoosts(this, true);
     }
+
+    sScriptMgr->OnPlayerActivateSpec(this, spec);
 }
 
 void Player::LoadActions(PreparedQueryResult result)

@@ -724,6 +724,9 @@ class TC_GAME_API PlayerScript : public ScriptObject
         // Called when a player resurrects
         virtual void OnPlayerResurrect(Player* player);
 
+        // Called when a player activates a talent spec (dual spec switch)
+        virtual void OnActivateSpec(Player* player, uint8 spec);
+
 };
 
 class TC_GAME_API AccountScript : public ScriptObject
@@ -1040,6 +1043,7 @@ class TC_GAME_API ScriptMgr
         void OnMovieComplete(Player* player, uint32 movieId);
         void OnPlayerRepop(Player* player);
         void OnPlayerResurrect(Player* player);
+        void OnPlayerActivateSpec(Player* player, uint8 spec);
 
     public: /* AccountScript */
 

@@ -1987,6 +1987,11 @@ void ScriptMgr::OnPlayerResurrect(Player* player)
     FOREACH_SCRIPT(PlayerScript)->OnPlayerResurrect(player);
 }
 
+void ScriptMgr::OnPlayerActivateSpec(Player* player, uint8 spec)
+{
+    FOREACH_SCRIPT(PlayerScript)->OnActivateSpec(player, spec);
+}
+
 // Account
 void ScriptMgr::OnAccountLogin(uint32 accountId)
 {
@@ -2704,6 +2709,10 @@ void PlayerScript::OnPlayerRepop(Player* /*player*/)
 }
 
 void PlayerScript::OnPlayerResurrect(Player* /*player*/)
+{
+}
+
+void PlayerScript::OnActivateSpec(Player* /*player*/, uint8 /*spec*/)
 {
 }
 
