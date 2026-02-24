@@ -76,3 +76,11 @@ Transmogrification.AllowMixedWeaponTypes = 0
 Transmogrification.AllowMixedInventoryTypes = 1
 Transmogrification.CopperCost = 0
 Transmogrification.SetCopperCost = 0
+
+# --------------------------------------------------
+# AUTO-JOIN GUILD
+# New characters automatically join this guild on first login
+# Set to the guild ID from `SELECT guildid FROM guild WHERE name = '...'`
+# 0 = disabled
+# --------------------------------------------------
+Guild.AutoJoin.Id = 1
