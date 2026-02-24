@@ -118,6 +118,34 @@ static uint32 corpseReclaimDelay[MAX_DEATH_COUNT] = { 30, 60, 120 };
 
 uint32 const MAX_MONEY_AMOUNT = static_cast<uint32>(std::numeric_limits<int32>::max());
 
+// Epic Progression: starter zones that live on expansion maps but must remain accessible
+// Map 530 (Outland) hosts Blood Elf and Draenei starting zones
+// Map 609 (Acherus)  is the Death Knight starting zone
+static bool IsStarterZoneOnExpansionMap(uint32 mapId, float x, float y, float z)
+{
+    if (mapId == 609) // DK starting zone - entire map
+        return true;
+
+    if (mapId == 530) // TBC starter zones on the Outland map
+    {
+        uint32 zoneId = sMapMgr->GetZoneId(PHASEMASK_NORMAL, mapId, x, y, z);
+        switch (zoneId)
+        {
+            case 3430: // Eversong Woods
+            case 3433: // Ghostlands
+            case 3487: // Silvermoon City
+            case 3524: // Azuremyst Isle
+            case 3525: // Bloodmyst Isle
+            case 3557: // The Exodar
+                return true;
+            default:
+                break;
+        }
+    }
+
+    return false;
+}
+
 Player::Player(WorldSession* session): Unit(true)
 {
     m_objectType |= TYPEMASK_PLAYER;
@@ -1548,7 +1576,8 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
         return false;
 
     // client without expansion support (uses quest-based effective expansion)
-    if (GetEffectiveExpansion() < mEntry->Expansion())
+    // Exception: starter zones on expansion maps (Blood Elf/Draenei on map 530, DK on map 609)
+    if (GetEffectiveExpansion() < mEntry->Expansion() && !IsStarterZoneOnExpansionMap(mapid, x, y, z))
     {
         TC_LOG_DEBUG("maps", "Player '{}' ({}) using client without required expansion tried teleport to non accessible map (MapID: {})",
             GetName(), GetGUID().ToString(), mapid);
@@ -17726,9 +17755,11 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     // Map could be changed before
     mapEntry = sMapStore.LookupEntry(mapId);
     // client without expansion support (uses quest-based effective expansion)
+    // Exception: starter zones on expansion maps (Blood Elf/Draenei on map 530, DK on map 609)
     if (mapEntry)
     {
-        if (GetEffectiveExpansion() < mapEntry->Expansion())
+        if (GetEffectiveExpansion() < mapEntry->Expansion() &&
+            !IsStarterZoneOnExpansionMap(mapId, GetPositionX(), GetPositionY(), GetPositionZ()))
         {
             TC_LOG_DEBUG("entities.player.loading", "Player::LoadFromDB: Player '{}' ({}) using client without required expansion tried login at non accessible map {}",
                 GetName(), GetGUID().ToString(), mapId);
@@ -19511,8 +19542,10 @@ bool Player::_LoadHomeBind(PreparedQueryResult result)
         MapEntry const* bindMapEntry = sMapStore.LookupEntry(m_homebindMapId);
 
         // accept saved data only for valid position (and non instanceable), and accessable (uses quest-based effective expansion)
+        // Exception: starter zones on expansion maps (Blood Elf/Draenei on map 530, DK on map 609)
         if (MapManager::IsValidMapCoord(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ) &&
-            !bindMapEntry->Instanceable() && GetEffectiveExpansion() >= bindMapEntry->Expansion())
+            !bindMapEntry->Instanceable() && (GetEffectiveExpansion() >= bindMapEntry->Expansion() ||
+            IsStarterZoneOnExpansionMap(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ)))
             ok = true;
         else
         {
