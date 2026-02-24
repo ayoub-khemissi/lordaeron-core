@@ -1577,7 +1577,8 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
 
     // client without expansion support (uses quest-based effective expansion)
     // Exception: starter zones on expansion maps (Blood Elf/Draenei on map 530, DK on map 609)
-    if (GetEffectiveExpansion() < mEntry->Expansion() && !IsStarterZoneOnExpansionMap(mapid, x, y, z))
+    // Exception: GMs are exempt from expansion gating
+    if (GetEffectiveExpansion() < mEntry->Expansion() && !IsGameMaster() && !IsStarterZoneOnExpansionMap(mapid, x, y, z))
     {
         TC_LOG_DEBUG("maps", "Player '{}' ({}) using client without required expansion tried teleport to non accessible map (MapID: {})",
             GetName(), GetGUID().ToString(), mapid);
@@ -17756,9 +17757,11 @@ bool Player::LoadFromDB(ObjectGuid guid, CharacterDatabaseQueryHolder const& hol
     mapEntry = sMapStore.LookupEntry(mapId);
     // client without expansion support (uses quest-based effective expansion)
     // Exception: starter zones on expansion maps (Blood Elf/Draenei on map 530, DK on map 609)
+    // Exception: GMs are exempt from expansion gating
     if (mapEntry)
     {
         if (GetEffectiveExpansion() < mapEntry->Expansion() &&
+            GetSession()->GetSecurity() < SEC_MODERATOR &&
             !IsStarterZoneOnExpansionMap(mapId, GetPositionX(), GetPositionY(), GetPositionZ()))
         {
             TC_LOG_DEBUG("entities.player.loading", "Player::LoadFromDB: Player '{}' ({}) using client without required expansion tried login at non accessible map {}",
@@ -19543,8 +19546,10 @@ bool Player::_LoadHomeBind(PreparedQueryResult result)
 
         // accept saved data only for valid position (and non instanceable), and accessable (uses quest-based effective expansion)
         // Exception: starter zones on expansion maps (Blood Elf/Draenei on map 530, DK on map 609)
+        // Exception: GMs are exempt from expansion gating
         if (MapManager::IsValidMapCoord(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ) &&
             !bindMapEntry->Instanceable() && (GetEffectiveExpansion() >= bindMapEntry->Expansion() ||
+            GetSession()->GetSecurity() >= SEC_MODERATOR ||
             IsStarterZoneOnExpansionMap(m_homebindMapId, m_homebindX, m_homebindY, m_homebindZ)))
             ok = true;
         else

@@ -89,7 +89,7 @@ public:
     // Check XP state on login - enforces XP freeze for level-capped players
     void OnLogin(Player* player, bool /*firstLogin*/) override
     {
-        if (!player || !player->GetSession())
+        if (!player || !player->GetSession() || player->IsGameMaster())
             return;
 
         uint8 effectiveExpansion = player->GetEffectiveExpansion();
@@ -185,7 +185,7 @@ public:
 
     void OnLevelChanged(Player* player, uint8 oldLevel) override
     {
-        if (!player || !player->GetSession())
+        if (!player || !player->GetSession() || player->IsGameMaster())
             return;
 
         uint8 newLevel = player->GetLevel();
