@@ -21,7 +21,7 @@ DELETE FROM `creature_questender` WHERE `quest` BETWEEN 100001 AND 100014;
 
 -- T1: Molten Core (Ragnaros) - QuestSortID 2717 = Molten Core
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100001, 2, 60, 60, 2717, 62, 40, 64, 5000000, 0, 'The Molten Core',
+(100001, 2, 60, 60, 2717, 62, 40, 64, 500000, 0, 'The Molten Core',
 'Ragnaros, the Firelord, threatens Azeroth from Blackrock Mountain.',
 'Champion, the hour of your first great trial is upon you.
 
@@ -34,7 +34,7 @@ This is your baptism of fire, hero. Your legend begins here.',
 
 -- T2: Blackwing Lair (Nefarian) - QuestSortID 2677 = Blackwing Lair
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100002, 2, 60, 60, 2677, 62, 40, 64, 6000000, 0, 'The Shadow of the Black Wing',
+(100002, 2, 60, 60, 2677, 62, 40, 64, 750000, 0, 'The Shadow of the Black Wing',
 'Nefarian, son of Deathwing, plots atop Blackrock Mountain.',
 'You have proven yourself against elemental fury. Now face draconic malice.
 
@@ -47,7 +47,7 @@ The spirit of Azeroth cries out for justice.',
 
 -- ZG: Zul'Gurub (Hakkar) - QuestSortID 1977 = Zul'Gurub
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100003, 2, 60, 60, 1977, 62, 20, 64, 4000000, 0, 'The Drums of Zul''Gurub',
+(100003, 2, 60, 60, 1977, 62, 20, 64, 300000, 0, 'The Drums of Zul''Gurub',
 'The Gurubashi trolls have awakened Hakkar the Soulflayer.',
 'The Blood God rises, champion.
 
@@ -60,7 +60,7 @@ The souls of countless victims cry out for vengeance.',
 
 -- T2.5: Ahn'Qiraj (C'Thun + Ossirian) - UNLOCKS TBC - QuestSortID 3428 = Temple of Ahn'Qiraj
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `RequiredNpcOrGo2`, `RequiredNpcOrGoCount2`, `ObjectiveText1`, `ObjectiveText2`) VALUES
-(100004, 2, 60, 60, 3428, 62, 40, 64, 8000000, 0, 'The Gates of Ahn''Qiraj',
+(100004, 2, 60, 60, 3428, 62, 40, 64, 1000000, 0, 'The Gates of Ahn''Qiraj',
 'C''Thun, an Old God, stirs within the Temple of Ahn''Qiraj.',
 'This is it, champion. The final test of your worthiness.
 
@@ -79,7 +79,7 @@ THE DARK PORTAL CALLS TO YOU, CHAMPION.',
 
 -- T4: Karazhan/Gruul/Magtheridon - QuestSortID 3457 = Karazhan
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `RequiredNpcOrGo2`, `RequiredNpcOrGoCount2`, `RequiredNpcOrGo3`, `RequiredNpcOrGoCount3`, `ObjectiveText1`, `ObjectiveText2`, `ObjectiveText3`) VALUES
-(100005, 2, 70, 70, 3457, 62, 25, 64, 10000000, 0, 'The First Darkness',
+(100005, 2, 70, 70, 3457, 62, 25, 64, 1000000, 0, 'The First Darkness',
 'Three threats loom over Outland.',
 '*A warm light envelops your mind, and you sense rather than hear A''dal''s message*
 
@@ -92,7 +92,7 @@ These shadows must be purged before greater evils can be faced. Go with the Ligh
 
 -- T5: SSC/The Eye (Vashj + Kael'thas) - QuestSortID 3607 = Serpentshrine Cavern
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `RequiredNpcOrGo2`, `RequiredNpcOrGoCount2`, `ObjectiveText1`, `ObjectiveText2`) VALUES
-(100006, 2, 70, 70, 3607, 62, 25, 64, 12000000, 0, 'Serpents and Sunfire',
+(100006, 2, 70, 70, 3607, 62, 25, 64, 1500000, 0, 'Serpents and Sunfire',
 'Lady Vashj and Kael''thas command Illidan''s forces.',
 '*Waves of compassion and urgency wash over you*
 
@@ -107,7 +107,7 @@ May the Light guide your steps.',
 
 -- T6: Hyjal/Black Temple (Archimonde + Illidan) - QuestSortID 3959 = Black Temple
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `RequiredNpcOrGo2`, `RequiredNpcOrGoCount2`, `ObjectiveText1`, `ObjectiveText2`) VALUES
-(100007, 2, 70, 70, 3959, 62, 25, 64, 15000000, 0, 'Legends Must Fall',
+(100007, 2, 70, 70, 3959, 62, 25, 64, 2000000, 0, 'Legends Must Fall',
 'Archimonde and Illidan await your judgment.',
 '*A profound solemnity settles upon your heart*
 
@@ -122,7 +122,7 @@ Strike with conviction. Strike with mercy if it can be given. Strike with Light.
 
 -- ZA: Zul'Aman (Zul'jin) - QuestSortID 3805 = Zul'Aman
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100008, 2, 70, 70, 3805, 62, 10, 64, 6000000, 0, 'The Fury of Zul''Aman',
+(100008, 2, 70, 70, 3805, 62, 10, 64, 500000, 0, 'The Fury of Zul''Aman',
 'Zul''jin gathers the Amani for war.',
 '*A gentle concern fills your thoughts*
 
@@ -137,7 +137,7 @@ Go in peace... but be prepared for war.',
 
 -- T6.5: Sunwell (Kil'jaeden) - UNLOCKS WOTLK - QuestSortID 4075 = Sunwell Plateau
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100009, 2, 70, 70, 4075, 62, 25, 64, 20000000, 0, 'The Sunwell Restored',
+(100009, 2, 70, 70, 4075, 62, 25, 64, 3000000, 0, 'The Sunwell Restored',
 'Kil''jaeden attempts to enter Azeroth.',
 '*An overwhelming surge of urgency and protective love floods your being*
 
@@ -158,7 +158,7 @@ WHEN YOU RETURN VICTORIOUS, A FROZEN LAND CALLS. NORTHREND AWAITS YOUR LIGHT.',
 
 -- T7: Naxxramas/Malygos/Sartharion - QuestSortID 3456 = Naxxramas
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `RequiredNpcOrGo2`, `RequiredNpcOrGoCount2`, `RequiredNpcOrGo3`, `RequiredNpcOrGoCount3`, `ObjectiveText1`, `ObjectiveText2`, `ObjectiveText3`) VALUES
-(100010, 2, 80, 80, 3456, 62, 25, 64, 15000000, 0, 'The First Trials of the North',
+(100010, 2, 80, 80, 3456, 62, 25, 64, 1500000, 0, 'The First Trials of the North',
 'Three threats demand the Kirin Tor''s attention.',
 'Champion, the Kirin Tor has need of your strength once more.
 
@@ -175,7 +175,7 @@ The path to Icecrown begins here.',
 
 -- T8: Ulduar (Yogg-Saron) - QuestSortID 4273 = Ulduar
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100011, 2, 80, 80, 4273, 62, 25, 64, 18000000, 0, 'The Prison of Yogg-Saron',
+(100011, 2, 80, 80, 4273, 62, 25, 64, 2000000, 0, 'The Prison of Yogg-Saron',
 'An Old God whispers from Ulduar.',
 'By Antonidas''s beard... the situation in Ulduar is worse than we feared.
 
@@ -190,7 +190,7 @@ This is a test of sanity itself, champion. Steel your mind.',
 
 -- T9: Trial of the Crusader/Onyxia (Anub'arak + Onyxia) - QuestSortID 4722 = Trial of the Crusader
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `RequiredNpcOrGo2`, `RequiredNpcOrGoCount2`, `ObjectiveText1`, `ObjectiveText2`) VALUES
-(100012, 2, 80, 80, 4722, 62, 25, 64, 20000000, 0, 'The Crusade''s Final Test',
+(100012, 2, 80, 80, 4722, 62, 25, 64, 2000000, 0, 'The Crusade''s Final Test',
 'The Argent Tournament and Onyxia''s return.',
 'Tirion Fordring sends word from the Argent Tournament, and I have troubling news from Dustwallow.
 
@@ -203,7 +203,7 @@ Complete these challenges. The gates of Icecrown Citadel will open soon, and we 
 
 -- T10: Icecrown Citadel (Lich King) - QuestSortID 4812 = Icecrown Citadel
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100013, 2, 80, 80, 4812, 62, 25, 64, 25000000, 0, 'The Fall of the Lich King',
+(100013, 2, 80, 80, 4812, 62, 25, 64, 3000000, 0, 'The Fall of the Lich King',
 'Arthas awaits at the Frozen Throne.',
 'The day has come, champion. The day we''ve all been fighting for.
 
@@ -218,7 +218,7 @@ End Arthas Menethil. End the Scourge. Save our world.',
 
 -- Final: Ruby Sanctum (Halion) - QuestSortID 4987 = The Ruby Sanctum
 INSERT INTO `quest_template` (`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `SuggestedGroupNum`, `Flags`, `RewardMoney`, `AllowableRaces`, `LogTitle`, `LogDescription`, `QuestDescription`, `QuestCompletionLog`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `ObjectiveText1`) VALUES
-(100014, 2, 80, 80, 4987, 62, 25, 64, 30000000, 0, 'The Twilight Destroyer',
+(100014, 2, 80, 80, 4987, 62, 25, 64, 5000000, 0, 'The Twilight Destroyer',
 'Halion attacks the Ruby Sanctum.',
 'Champion - I hoped after the Lich King''s fall, we might have peace. I was wrong.
 
