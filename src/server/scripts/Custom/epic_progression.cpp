@@ -13,6 +13,8 @@
 #include "Chat.h"
 #include "QuestDef.h"
 #include "Log.h"
+#include "MapManager.h"
+#include "DBCStores.h"
 #include "SharedDefines.h"
 
 // Quest IDs (custom range starting at 100000)
@@ -38,6 +40,39 @@ enum EpicProgressionQuests
     QUEST_T10_ICC              = 100013, // Lich King
     QUEST_FINAL_RS             = 100014, // Halion
 };
+
+// TBC starter zones on map 530 (Outland) that must remain accessible without TBC
+enum StarterZoneIds
+{
+    ZONE_EVERSONG_WOODS     = 3430,
+    ZONE_GHOSTLANDS         = 3433,
+    ZONE_SILVERMOON_CITY    = 3487,
+    ZONE_AZUREMYST_ISLE     = 3524,
+    ZONE_BLOODMYST_ISLE     = 3525,
+    ZONE_THE_EXODAR         = 3557,
+};
+
+// DK starting zone
+constexpr uint32 MAP_ACHERUS = 609;
+
+static bool IsStarterZone(uint32 mapId, uint32 zoneId)
+{
+    if (mapId == MAP_ACHERUS)
+        return true;
+
+    switch (zoneId)
+    {
+        case ZONE_EVERSONG_WOODS:
+        case ZONE_GHOSTLANDS:
+        case ZONE_SILVERMOON_CITY:
+        case ZONE_AZUREMYST_ISLE:
+        case ZONE_BLOODMYST_ISLE:
+        case ZONE_THE_EXODAR:
+            return true;
+        default:
+            return false;
+    }
+}
 
 // Visual spell effects for expansion unlock
 enum EpicProgressionSpells
@@ -199,6 +234,37 @@ public:
             SendProgressMessage(player, "|cFFFFD700[Epic Progression]|r You have reached level 80! The frozen terrors of Northrend demand your strength.");
             SendProgressMessage(player, "|cFFFFD700[Epic Progression]|r Seek out |cFF00FFFFArchmage Rhonin|r in |cFF00FF00Dalaran, The Violet Citadel|r to face the final trials.");
         }
+    }
+
+    // Safety net: if a player enters a zone they shouldn't have access to, send them home
+    void OnUpdateZone(Player* player, uint32 newZone, uint32 /*newArea*/) override
+    {
+        if (!player || !player->GetSession() || player->IsGameMaster())
+            return;
+
+        uint32 mapId = player->GetMapId();
+        MapEntry const* mapEntry = sMapStore.LookupEntry(mapId);
+        if (!mapEntry)
+            return;
+
+        uint8 effectiveExpansion = player->GetEffectiveExpansion();
+        uint8 requiredExpansion = mapEntry->Expansion();
+
+        // Player has the required expansion or map doesn't require one
+        if (effectiveExpansion >= requiredExpansion)
+            return;
+
+        // Allow starter zones on expansion maps
+        if (IsStarterZone(mapId, newZone))
+            return;
+
+        TC_LOG_WARN("scripts", "[Epic Progression] Player {} entered forbidden zone {} (map {}, requires expansion {}, has {}). Sending to homebind.",
+            player->GetName(), newZone, mapId, requiredExpansion, effectiveExpansion);
+
+        ChatHandler(player->GetSession()).PSendSysMessage(
+            "|cFFFF0000[Epic Progression]|r You have not yet unlocked this content. Returning to safety...");
+
+        player->TeleportTo(player->m_homebindMapId, player->m_homebindX, player->m_homebindY, player->m_homebindZ, player->GetOrientation());
     }
 
 private:
