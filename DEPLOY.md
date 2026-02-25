@@ -42,7 +42,7 @@ sudo mysql lordaeron_website < sql/your_file.sql
 > Use `REPLACE INTO` instead of `DELETE + INSERT` to avoid data loss on live data.
 > For tables with foreign keys (e.g. `vote_sites` referenced by `vote_logs`), use `UPDATE` instead of `REPLACE INTO`.
 
-### 3. Announce, Save & Graceful Shutdown
+### 3. Announce & Graceful Shutdown
 
 Send commands via SOAP (port 7878, credentials: admin account with GM level 3).
 
@@ -51,7 +51,7 @@ Send commands via SOAP (port 7878, credentials: admin account with GM level 3).
 - `server shutdown` = clean exit, systemd does NOT auto-restart (exit code 0), giving you time to deploy the new binary
 
 ```bash
-# Announce to players
+# 1. Announce to players
 curl -s -H 'Content-Type: application/xml' -u 'admin:PASSWORD' --data \
 '<?xml version="1.0" encoding="UTF-8"?>
 <SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="urn:TC">
@@ -60,21 +60,25 @@ curl -s -H 'Content-Type: application/xml' -u 'admin:PASSWORD' --data \
 </ns1:executeCommand></SOAP-ENV:Body></SOAP-ENV:Envelope>' \
 'http://127.0.0.1:7878/'
 
-# Save all player data
-curl -s -H 'Content-Type: application/xml' -u 'admin:PASSWORD' --data \
-'<?xml version="1.0" encoding="UTF-8"?>
-<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="urn:TC">
-<SOAP-ENV:Body><ns1:executeCommand>
-<command>saveall</command>
-</ns1:executeCommand></SOAP-ENV:Body></SOAP-ENV:Envelope>' \
-'http://127.0.0.1:7878/'
-
-# Graceful shutdown with 60s countdown (players see the timer)
+# 2. Start 60s shutdown countdown (players see the timer)
 curl -s -H 'Content-Type: application/xml' -u 'admin:PASSWORD' --data \
 '<?xml version="1.0" encoding="UTF-8"?>
 <SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="urn:TC">
 <SOAP-ENV:Body><ns1:executeCommand>
 <command>server shutdown 60</command>
+</ns1:executeCommand></SOAP-ENV:Body></SOAP-ENV:Envelope>' \
+'http://127.0.0.1:7878/'
+
+# 3. Wait ~50 seconds (build can run in parallel during this time)
+sleep 50
+
+# 4. Save all player data at the last moment (~10s before shutdown)
+#    This minimizes data loss by capturing the most recent player state
+curl -s -H 'Content-Type: application/xml' -u 'admin:PASSWORD' --data \
+'<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns1="urn:TC">
+<SOAP-ENV:Body><ns1:executeCommand>
+<command>saveall</command>
 </ns1:executeCommand></SOAP-ENV:Body></SOAP-ENV:Envelope>' \
 'http://127.0.0.1:7878/'
 ```
