@@ -19,6 +19,7 @@
 #include "CharacterCache.h"
 #include "Common.h"
 #include "Corpse.h"
+#include "CrossFactionUtil.h"
 #include "DatabaseEnv.h"
 #include "DBCStores.h"
 #include "GameTime.h"
@@ -50,7 +51,14 @@ void WorldSession::SendNameQueryOpcode(ObjectGuid guid)
     data << uint8(0);                               // name known
     data << nameData->Name;                         // played name
     data << uint8(0);                               // realm name - only set for cross realm interaction (such as Battlegrounds)
-    data << uint8(nameData->Race);
+
+    // Cross-faction: spoof race so the client sees the target as same-faction.
+    // Skip for self (breaks character screen) and in BGs (must see real faction).
+    uint8 race = nameData->Race;
+    if (_player && guid != _player->GetGUID() && !_player->InBattleground())
+        race = CrossFaction::GetSpoofedRace(race, _player->GetTeam());
+
+    data << uint8(race);
     data << uint8(nameData->Sex);
     data << uint8(nameData->Class);
 

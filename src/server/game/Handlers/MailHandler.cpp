@@ -194,7 +194,9 @@ void WorldSession::HandleSendMail(WorldPackets::Mail::SendMail& sendMail)
             }
         }
 
-        if (!accountBound && player->GetTeam() != receiverTeam && !HasPermission(rbac::RBAC_PERM_TWO_SIDE_INTERACTION_MAIL))
+        if (!accountBound && player->GetTeam() != receiverTeam
+            && !HasPermission(rbac::RBAC_PERM_TWO_SIDE_INTERACTION_MAIL)
+            && !sWorld->getBoolConfig(CONFIG_ALLOW_TWO_SIDE_INTERACTION_GROUP))
         {
             player->SendMailResult(0, MAIL_SEND, MAIL_ERR_NOT_YOUR_TEAM);
             return;

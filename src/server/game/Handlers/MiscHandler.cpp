@@ -25,6 +25,7 @@
 #include "Corpse.h"
 #include "Creature.h"
 #include "CreatureAI.h"
+#include "CrossFactionUtil.h"
 #include "DatabaseEnv.h"
 #include "DBCStores.h"
 #include "GameObject.h"
@@ -274,8 +275,8 @@ void WorldSession::HandleWhoOpcode(WorldPacket& recvData)
         if (!(classmask & (1 << class_)))
             continue;
 
-        // check if race matches racemask
-        uint32 race = target.GetRace();
+        // Cross-faction: spoof race so /who filtering and display use viewer's faction
+        uint32 race = CrossFaction::GetSpoofedRace(target.GetRace(), team);
         if (!(racemask & (1 << race)))
             continue;
 
