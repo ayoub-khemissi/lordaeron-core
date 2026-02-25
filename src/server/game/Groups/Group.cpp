@@ -2186,8 +2186,14 @@ void Group::ResetInstances(uint8 method, bool isRaid, Player* SendMsgTo)
 
         if (method == INSTANCE_RESET_ALL)
         {
-            // the "reset all instances" method can only reset normal maps
-            if (entry->InstanceType == MAP_RAID || diff == DUNGEON_DIFFICULTY_HEROIC)
+            // the "reset all instances" method can only reset locked instance types
+            bool skipReset = false;
+            if (entry->IsRaid())
+                skipReset = sWorld->getBoolConfig(CONFIG_INSTANCE_RAID_LOCK);
+            else if (diff == DUNGEON_DIFFICULTY_HEROIC)
+                skipReset = sWorld->getBoolConfig(CONFIG_INSTANCE_HEROIC_LOCK);
+
+            if (skipReset)
             {
                 ++itr;
                 continue;

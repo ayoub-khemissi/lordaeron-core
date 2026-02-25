@@ -4131,6 +4131,13 @@ void InstanceMap::PermBindAllPlayers()
     if (!IsDungeon())
         return;
 
+    // Skip permanent bind when lock is disabled for this instance type
+    if (IsRaid() && !sWorld->getBoolConfig(CONFIG_INSTANCE_RAID_LOCK))
+        return;
+    if (!IsRaid() && GetDifficulty() > DUNGEON_DIFFICULTY_NORMAL
+        && !sWorld->getBoolConfig(CONFIG_INSTANCE_HEROIC_LOCK))
+        return;
+
     InstanceSave* save = sInstanceSaveMgr->GetInstanceSave(GetInstanceId());
     if (!save)
     {

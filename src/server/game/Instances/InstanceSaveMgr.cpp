@@ -36,6 +36,33 @@
 
 uint16 InstanceSaveManager::ResetTimeDelay[] = {3600, 900, 300, 60};
 
+// Find the next reset time that falls on a configured weekday at the given hour.
+// weekdayMask: bitmask where bit 0 = Monday, bit 6 = Sunday (ISO 8601).
+// Returns the first matching timestamp strictly after fromTime.
+static time_t GetNextWeekdayResetTime(time_t fromTime, uint32 weekdayMask, uint32 resetHour)
+{
+    time_t utcDay = (fromTime / DAY) * DAY;
+
+    for (int offset = 0; offset <= 7; ++offset)
+    {
+        time_t dayBase = utcDay + offset * DAY;
+        tm localTm;
+        localtime_r(&dayBase, &localTm);
+        // Convert tm_wday (0=Sun..6=Sat) to ISO (1=Mon..7=Sun)
+        uint8 isoDay = localTm.tm_wday == 0 ? 7 : uint8(localTm.tm_wday);
+
+        if (weekdayMask & (1u << (isoDay - 1)))
+        {
+            time_t candidate = GetLocalHourTimestamp(dayBase, resetHour, false);
+            if (candidate > fromTime)
+                return candidate;
+        }
+    }
+
+    // Fallback — should not happen with a valid mask
+    return GetLocalHourTimestamp(utcDay + 8 * DAY, resetHour, false);
+}
+
 InstanceSaveManager::~InstanceSaveManager()
 {
 }
@@ -101,7 +128,15 @@ InstanceSave* InstanceSaveManager::AddInstanceSave(uint32 mapId, uint32 instance
     {
         // initialize reset time
         // for normal instances if no creatures are killed the instance will reset in two hours
-        if (entry->InstanceType == MAP_RAID || difficulty > DUNGEON_DIFFICULTY_NORMAL)
+        bool useGlobalReset;
+        if (entry->IsRaid())
+            useGlobalReset = sWorld->getBoolConfig(CONFIG_INSTANCE_RAID_LOCK);
+        else if (difficulty > DUNGEON_DIFFICULTY_NORMAL)
+            useGlobalReset = sWorld->getBoolConfig(CONFIG_INSTANCE_HEROIC_LOCK);
+        else
+            useGlobalReset = false;
+
+        if (useGlobalReset)
             resetTime = GetResetTimeFor(mapId, difficulty);
         else
         {
@@ -345,7 +380,11 @@ void InstanceSaveManager::LoadResetTimes()
     }
 
     // load the global respawn times for raid/heroic instances
-    uint32 resetHour = sWorld->getIntConfig(CONFIG_INSTANCE_RESET_TIME_HOUR);
+    uint32 globalResetHour = sWorld->getIntConfig(CONFIG_INSTANCE_RESET_TIME_HOUR);
+    uint32 heroicResetHour = sWorld->getIntConfig(CONFIG_INSTANCE_HEROIC_RESET_HOUR);
+    uint32 raidResetHour = sWorld->getIntConfig(CONFIG_INSTANCE_RAID_RESET_HOUR);
+    uint32 raidDaysMask = sWorld->getIntConfig(CONFIG_INSTANCE_RAID_RESET_DAYS);
+
     if (QueryResult result = CharacterDatabase.Query("SELECT mapid, difficulty, resettime FROM instance_reset"))
     {
         do
@@ -365,6 +404,17 @@ void InstanceSaveManager::LoadResetTimes()
                 stmt->setUInt8(1, uint8(difficulty));
                 CharacterDatabase.DirectExecute(stmt);
                 continue;
+            }
+
+            // Determine the correct reset hour for this map type
+            MapEntry const* entry = sMapStore.LookupEntry(mapid);
+            uint32 resetHour = globalResetHour;
+            if (entry)
+            {
+                if (entry->IsRaid())
+                    resetHour = raidResetHour;
+                else if (difficulty > DUNGEON_DIFFICULTY_NORMAL)
+                    resetHour = heroicResetHour;
             }
 
             // update the reset time if the hour in the configs changes
@@ -393,6 +443,29 @@ void InstanceSaveManager::LoadResetTimes()
         if (!mapDiff->resetTime)
             continue;
 
+        MapEntry const* entry = sMapStore.LookupEntry(mapid);
+        if (!entry)
+            continue;
+
+        bool isRaid = entry->IsRaid();
+        bool isHeroicDungeon = !isRaid && difficulty > DUNGEON_DIFFICULTY_NORMAL;
+
+        // Skip instances with disabled lock
+        if (isRaid && !sWorld->getBoolConfig(CONFIG_INSTANCE_RAID_LOCK))
+            continue;
+        if (isHeroicDungeon && !sWorld->getBoolConfig(CONFIG_INSTANCE_HEROIC_LOCK))
+            continue;
+
+        // Determine the correct reset hour for this map type
+        uint32 resetHour = globalResetHour;
+        if (isRaid)
+            resetHour = raidResetHour;
+        else if (isHeroicDungeon)
+            resetHour = heroicResetHour;
+
+        // For raids with configured weekday-based resets
+        bool useWeekdayReset = isRaid && raidDaysMask;
+
         // the reset_delay must be at least one day
         uint32 period = uint32(((mapDiff->resetTime * sWorld->getRate(RATE_INSTANCE_RESET_TIME)) / float(DAY)) * float(DAY));
         if (period < DAY)
@@ -402,7 +475,10 @@ void InstanceSaveManager::LoadResetTimes()
         if (!t)
         {
             // initialize the reset time
-            t = GetLocalHourTimestamp(today + period, resetHour);
+            if (useWeekdayReset)
+                t = GetNextWeekdayResetTime(now, raidDaysMask, resetHour);
+            else
+                t = GetLocalHourTimestamp(today + period, resetHour);
 
             CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_GLOBAL_INSTANCE_RESETTIME);
             stmt->setUInt16(0, uint16(mapid));
@@ -415,8 +491,13 @@ void InstanceSaveManager::LoadResetTimes()
         {
             // assume that expired instances have already been cleaned
             // calculate the next reset time
-            time_t day = (t / DAY) * DAY;
-            t = GetLocalHourTimestamp(day + ((today - day) / period + 1) * period, resetHour);
+            if (useWeekdayReset)
+                t = GetNextWeekdayResetTime(now, raidDaysMask, resetHour);
+            else
+            {
+                time_t day = (t / DAY) * DAY;
+                t = GetLocalHourTimestamp(day + ((today - day) / period + 1) * period, resetHour);
+            }
 
             CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_UPD_GLOBAL_INSTANCE_RESETTIME);
             stmt->setUInt64(0, uint64(t));
@@ -450,7 +531,22 @@ time_t InstanceSaveManager::GetSubsequentResetTime(uint32 mapid, Difficulty diff
         return 0;
     }
 
-    time_t resetHour = sWorld->getIntConfig(CONFIG_INSTANCE_RESET_TIME_HOUR);
+    MapEntry const* entry = sMapStore.LookupEntry(mapid);
+    bool isRaid = entry && entry->IsRaid();
+    bool isHeroicDungeon = entry && !isRaid && difficulty > DUNGEON_DIFFICULTY_NORMAL;
+
+    // Determine the correct reset hour for this map type
+    uint32 resetHour = sWorld->getIntConfig(CONFIG_INSTANCE_RESET_TIME_HOUR);
+    if (isRaid)
+        resetHour = sWorld->getIntConfig(CONFIG_INSTANCE_RAID_RESET_HOUR);
+    else if (isHeroicDungeon)
+        resetHour = sWorld->getIntConfig(CONFIG_INSTANCE_HEROIC_RESET_HOUR);
+
+    // For raids with configured weekday-based resets
+    uint32 raidDaysMask = sWorld->getIntConfig(CONFIG_INSTANCE_RAID_RESET_DAYS);
+    if (isRaid && raidDaysMask)
+        return GetNextWeekdayResetTime(resetTime, raidDaysMask, resetHour);
+
     time_t period = uint32(((mapDiff->resetTime * sWorld->getRate(RATE_INSTANCE_RESET_TIME)) / float(DAY)) * float(DAY));
     if (period < DAY)
         period = DAY;

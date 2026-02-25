@@ -983,6 +983,58 @@ Instance.IgnoreRaid = 0
 Instance.ResetTimeHour = 4
 
 #
+#    Instance.HeroicLock
+#        Description: Enable heroic dungeon lockout.
+#                     When disabled, players can re-enter heroic dungeons immediately
+#                     like normal dungeons (no permanent bind).
+#        Default:     1 - (Enabled, standard daily lockout)
+#                     0 - (Disabled, no heroic lockout)
+
+Instance.HeroicLock = 1
+
+#
+#    Instance.HeroicResetHour
+#        Description: Hour of the day when heroic dungeon lockouts reset.
+#                     Only effective when Instance.HeroicLock = 1.
+#        Range:       0-23
+#        Default:     4 - (04:00 AM)
+
+Instance.HeroicResetHour = 4
+
+#
+#    Instance.RaidLock
+#        Description: Enable raid lockout.
+#                     When disabled, players can re-enter raids immediately
+#                     like normal dungeons (no permanent bind).
+#        Default:     1 - (Enabled, standard raid lockout)
+#                     0 - (Disabled, no raid lockout)
+
+Instance.RaidLock = 1
+
+#
+#    Instance.RaidResetDays
+#        Description: Specific weekdays when raids reset, as a comma-separated list.
+#                     Uses ISO weekday numbers: 1=Monday, 2=Tuesday, 3=Wednesday,
+#                     4=Thursday, 5=Friday, 6=Saturday, 7=Sunday.
+#                     Leave empty to use default DBC values (usually every 7 days)
+#                     multiplied by Rate.InstanceResetTime.
+#                     Only effective when Instance.RaidLock = 1.
+#        Examples:    "3,7"  - Reset every Wednesday and Sunday
+#                     "4"    - Reset every Thursday
+#        Default:     "" - (Use DBC defaults)
+
+Instance.RaidResetDays = ""
+
+#
+#    Instance.RaidResetHour
+#        Description: Hour of the day when raid lockouts reset.
+#                     Only effective when Instance.RaidLock = 1.
+#        Range:       0-23
+#        Default:     4 - (04:00 AM)
+
+Instance.RaidResetHour = 4
+
+#
 #    Instance.UnloadDelay
 #        Description: Time (in milliseconds) before instance maps are unloaded from memory if no
 #                     characters are inside.

@@ -33,14 +33,16 @@ Rate.Reputation.LowLevel.Quest = 2
 # NO DUNGEON LOCKOUT
 # Removes the 5 instances per hour limit
 # --------------------------------------------------
-AccountInstancesPerHour = 0
+AccountInstancesPerHour = 999
 
 # --------------------------------------------------
-# RAID RESET EVERY 2 DAYS
-# Multiplier: 2/7 = 0.29 (weekly raids => ~2d, heroics => ~7h)
-# /!\ Requires clearing the `instance_reset` table in the characters DB
+# INSTANCE LOCKOUT
+# /!\ Requires TRUNCATE `instance_reset` in characters DB after changes
 # --------------------------------------------------
-Rate.InstanceResetTime = 0.29
+Instance.HeroicLock = 0
+Instance.RaidLock = 1
+Instance.RaidResetDays = "3,7"
+Instance.RaidResetHour = 5
 
 # --------------------------------------------------
 # CROSSFACTION

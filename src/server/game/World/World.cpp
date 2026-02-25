@@ -995,6 +995,35 @@ void World::LoadConfigSettings(bool reload)
     m_int_configs[CONFIG_INSTANCE_RESET_TIME_HOUR]  = sConfigMgr->GetIntDefault("Instance.ResetTimeHour", 4);
     m_int_configs[CONFIG_INSTANCE_UNLOAD_DELAY] = sConfigMgr->GetIntDefault("Instance.UnloadDelay", 30 * MINUTE * IN_MILLISECONDS);
 
+    m_bool_configs[CONFIG_INSTANCE_HEROIC_LOCK] = sConfigMgr->GetBoolDefault("Instance.HeroicLock", true);
+    m_bool_configs[CONFIG_INSTANCE_RAID_LOCK] = sConfigMgr->GetBoolDefault("Instance.RaidLock", true);
+
+    m_int_configs[CONFIG_INSTANCE_HEROIC_RESET_HOUR] = sConfigMgr->GetIntDefault("Instance.HeroicResetHour", 4);
+    if (m_int_configs[CONFIG_INSTANCE_HEROIC_RESET_HOUR] > 23)
+    {
+        TC_LOG_ERROR("server.loading", "Instance.HeroicResetHour ({}) must be in range 0..23. Set to 4.", m_int_configs[CONFIG_INSTANCE_HEROIC_RESET_HOUR]);
+        m_int_configs[CONFIG_INSTANCE_HEROIC_RESET_HOUR] = 4;
+    }
+
+    m_int_configs[CONFIG_INSTANCE_RAID_RESET_HOUR] = sConfigMgr->GetIntDefault("Instance.RaidResetHour", 4);
+    if (m_int_configs[CONFIG_INSTANCE_RAID_RESET_HOUR] > 23)
+    {
+        TC_LOG_ERROR("server.loading", "Instance.RaidResetHour ({}) must be in range 0..23. Set to 4.", m_int_configs[CONFIG_INSTANCE_RAID_RESET_HOUR]);
+        m_int_configs[CONFIG_INSTANCE_RAID_RESET_HOUR] = 4;
+    }
+
+    // Parse raid reset days from string like "3,7" to bitmask (bit 0=Mon, bit 6=Sun)
+    {
+        std::string raidDaysStr = sConfigMgr->GetStringDefault("Instance.RaidResetDays", "");
+        uint32 raidDaysMask = 0;
+        for (char c : raidDaysStr)
+        {
+            if (c >= '1' && c <= '7')
+                raidDaysMask |= (1u << (c - '1'));
+        }
+        m_int_configs[CONFIG_INSTANCE_RAID_RESET_DAYS] = raidDaysMask;
+    }
+
     m_int_configs[CONFIG_DAILY_QUEST_RESET_TIME_HOUR] = sConfigMgr->GetIntDefault("Quests.DailyResetTime", 3);
     if (m_int_configs[CONFIG_DAILY_QUEST_RESET_TIME_HOUR] > 23)
     {
