@@ -100,6 +100,30 @@ pnpm build
 
 Wait for both the build AND the shutdown countdown to complete before proceeding.
 
+#### Troubleshooting: Stale Precompiled Header (PCH)
+
+If the build fails with an error like:
+
+```
+fatal error: file '/usr/include/asm-generic/errno.h' has been modified since the
+precompiled header '...cmake_pch.hxx.pch' was built: mtime changed
+```
+
+This happens when system packages are updated (e.g. `apt upgrade`, kernel headers update) and the precompiled headers become invalidated. Fix by deleting the stale PCH and rebuilding:
+
+```bash
+cd /home/ubuntu/lordaeron/lordaeron-core/build
+rm -f src/server/scripts/CMakeFiles/scripts.dir/cmake_pch.hxx.pch
+make -j$(nproc)
+```
+
+If multiple PCH files are stale, remove them all:
+
+```bash
+find . -name "*.pch" -delete
+make -j$(nproc)
+```
+
 ### 5. Deploy & Restart
 
 ```bash
