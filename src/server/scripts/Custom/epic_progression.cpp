@@ -41,33 +41,30 @@ enum EpicProgressionQuests
     QUEST_FINAL_RS             = 100014, // Halion
 };
 
-// TBC starter zones on map 530 (Outland) that must remain accessible without TBC
-enum StarterZoneIds
-{
-    ZONE_EVERSONG_WOODS     = 3430,
-    ZONE_GHOSTLANDS         = 3433,
-    ZONE_SILVERMOON_CITY    = 3487,
-    ZONE_AZUREMYST_ISLE     = 3524,
-    ZONE_BLOODMYST_ISLE     = 3525,
-    ZONE_THE_EXODAR         = 3557,
-};
-
 // DK starting zone
 constexpr uint32 MAP_ACHERUS = 609;
 
-static bool IsStarterZone(uint32 mapId, uint32 zoneId)
-{
-    if (mapId == MAP_ACHERUS)
-        return true;
+// Outland map (also contains Draenei/Blood Elf starter zones)
+constexpr uint32 MAP_OUTLAND = 530;
 
+// TBC zones on map 530 that must be restricted
+// Starter zones (Azuremyst, Bloodmyst, Exodar, Eversong, Ghostlands, Silvermoon)
+// and ocean zones (Boreal Sea, Veiled Sea) are NOT listed here and remain accessible.
+static bool IsOutlandTBCZone(uint32 zoneId)
+{
     switch (zoneId)
     {
-        case ZONE_EVERSONG_WOODS:
-        case ZONE_GHOSTLANDS:
-        case ZONE_SILVERMOON_CITY:
-        case ZONE_AZUREMYST_ISLE:
-        case ZONE_BLOODMYST_ISLE:
-        case ZONE_THE_EXODAR:
+        case 3483: // Hellfire Peninsula
+        case 3518: // Nagrand
+        case 3519: // Terokkar Forest
+        case 3520: // Shadowmoon Valley
+        case 3521: // Zangarmarsh
+        case 3522: // Blade's Edge Mountains
+        case 3523: // Netherstorm
+        case 3540: // Twisting Nether
+        case 3703: // Shattrath
+        case 3917: // Auchindoun
+        case 4080: // Isle of Quel'Danas
             return true;
         default:
             return false;
@@ -254,8 +251,14 @@ public:
         if (effectiveExpansion >= requiredExpansion)
             return;
 
-        // Allow starter zones on expansion maps
-        if (IsStarterZone(mapId, newZone))
+        // DK starting zone is always accessible
+        if (mapId == MAP_ACHERUS)
+            return;
+
+        // Map 530 (Outland) contains both TBC content and Draenei/Blood Elf starter zones.
+        // Only block the 11 actual TBC zones; starter zones, oceans, docks and
+        // transport transitions remain accessible.
+        if (mapId == MAP_OUTLAND && !IsOutlandTBCZone(newZone))
             return;
 
         TC_LOG_WARN("scripts", "[Epic Progression] Player {} entered forbidden zone {} (map {}, requires expansion {}, has {}). Sending to homebind.",
